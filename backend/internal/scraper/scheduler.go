@@ -1,0 +1,177 @@
+package scraper
+
+import (
+	"database/sql"
+	"log"
+	"remotehunter/internal/models"
+	"strings"
+	"time"
+
+	"github.com/robfig/cron/v3"
+)
+
+// Scheduler manages background cron-based scraping
+type Scheduler struct {
+	cron      *cron.Cron
+	db        *sql.DB
+	scrapers  map[string]Scraper
+	isRunning bool
+}
+
+// NewScheduler creates a new scheduler with all registered scrapers.
+// Keys must match the board_name values stored in scraper_configs (case-insensitive).
+func NewScheduler(db *sql.DB) *Scheduler {
+	scrapers := map[string]Scraper{
+		"golangprojects":  NewGolangProjectsScraper(),
+		"hnhiring":        NewHNHiringScraper(),
+		"weworkremotely":  NewWeWorkRemotelyScraper(),
+		"remotive":        NewRemotiveScraper(),
+		"arbeitnow":       NewArbeitnowScraper(),
+		"builtin":         NewBuiltInScraper(),
+		"builtinremote":   NewBuiltInScraper(),
+	}
+
+	return &Scheduler{
+		cron:     cron.New(cron.WithChain(cron.Recover(cron.DefaultLogger))),
+		db:       db,
+		scrapers: scrapers,
+	}
+}
+
+// Start begins the cron scheduling based on database configs
+func (s *Scheduler) Start() {
+	configs, err := s.loadConfigs()
+	if err != nil {
+		log.Printf("[Scheduler] Failed to load configs: %v", err)
+		return
+	}
+
+	for _, cfg := range configs {
+		if !cfg.Enabled {
+			continue
+		}
+
+		boardName := cfg.BoardName
+		targetURL := cfg.TargetURL
+		schedule := cfg.CronSchedule
+		if schedule == "" {
+			schedule = "@every 1h"
+		}
+
+		s.cron.AddFunc(schedule, func() {
+			s.RunScraper(boardName, targetURL)
+		})
+
+		log.Printf("[Scheduler] Registered scraper '%s' → key='%s' schedule='%s'", boardName, normalizeKey(boardName), schedule)
+	}
+
+	s.cron.Start()
+	s.isRunning = true
+	log.Println("[Scheduler] Background cron scheduler started")
+
+	// Run all scrapers immediately on startup
+	go s.TriggerAll()
+}
+
+// Stop stops the background scheduler
+func (s *Scheduler) Stop() {
+	s.cron.Stop()
+	s.isRunning = false
+	log.Println("[Scheduler] Scheduler stopped")
+}
+
+// TriggerAll runs all enabled scrapers immediately
+func (s *Scheduler) TriggerAll() {
+	configs, err := s.loadConfigs()
+	if err != nil {
+		log.Printf("[Scheduler] TriggerAll: failed to load configs: %v", err)
+		return
+	}
+
+	for _, cfg := range configs {
+		if cfg.Enabled {
+			go s.RunScraper(cfg.BoardName, cfg.TargetURL)
+		}
+	}
+}
+
+// RunScraper executes a named scraper and upserts results to the database
+func (s *Scheduler) RunScraper(boardName, targetURL string) {
+	key := normalizeKey(boardName)
+	sc, ok := s.scrapers[key]
+	if !ok {
+		log.Printf("[Scheduler] No scraper registered for '%s' (key: '%s') — skipping", boardName, key)
+		s.updateLastRun(boardName)
+		return
+	}
+
+	log.Printf("[Scheduler] Running scraper '%s'", boardName)
+	jobs, err := sc.Scrape(targetURL)
+	if err != nil {
+		log.Printf("[Scheduler] Scraper '%s' error: %v", boardName, err)
+		return
+	}
+
+	saved := 0
+	for _, job := range jobs {
+		if err := s.upsertJob(&job); err != nil {
+			log.Printf("[Scheduler] Failed to save job '%s': %v", job.Title, err)
+		} else {
+			saved++
+		}
+	}
+
+	log.Printf("[Scheduler] '%s': saved %d/%d jobs", boardName, saved, len(jobs))
+	s.updateLastRun(boardName)
+}
+
+// upsertJob saves a job to the database, skipping if hash already exists
+func (s *Scheduler) upsertJob(job *models.Job) error {
+	cleanTitle := strings.ToValidUTF8(strings.ReplaceAll(job.Title, "\x00", ""), "")
+	cleanCompany := strings.ToValidUTF8(strings.ReplaceAll(job.Company, "\x00", ""), "")
+	cleanDesc := strings.ToValidUTF8(strings.ReplaceAll(job.Description, "\x00", ""), "")
+
+	_, err := s.db.Exec(`
+		INSERT INTO jobs (job_hash, title, company, location, country, source_url, source_board, description, salary_range, job_type, posted_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		ON CONFLICT (job_hash) DO NOTHING`,
+		job.JobHash, cleanTitle, cleanCompany, job.Location, job.Country,
+		job.SourceURL, job.SourceBoard, cleanDesc, job.SalaryRange,
+		job.JobType, job.PostedAt,
+	)
+	return err
+}
+
+// loadConfigs reads scraper configurations from database
+func (s *Scheduler) loadConfigs() ([]models.ScraperConfig, error) {
+	rows, err := s.db.Query(`SELECT id, board_name, target_url, enabled, cron_schedule, last_run_at FROM scraper_configs ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var configs []models.ScraperConfig
+	for rows.Next() {
+		var c models.ScraperConfig
+		var lastRunAt sql.NullTime
+		if err := rows.Scan(&c.ID, &c.BoardName, &c.TargetURL, &c.Enabled, &c.CronSchedule, &lastRunAt); err != nil {
+			continue
+		}
+		if lastRunAt.Valid {
+			c.LastRunAt = &lastRunAt.Time
+		}
+		configs = append(configs, c)
+	}
+	return configs, nil
+}
+
+func (s *Scheduler) updateLastRun(boardName string) {
+	s.db.Exec(`UPDATE scraper_configs SET last_run_at = $1 WHERE board_name = $2`, time.Now(), boardName)
+}
+
+// normalizeKey converts a board_name from the DB to the scrapers map key.
+// All keys in the scrapers map are lowercase, no spaces.
+func normalizeKey(name string) string {
+	// Strip spaces, lowercase
+	return strings.ToLower(strings.ReplaceAll(name, " ", ""))
+}

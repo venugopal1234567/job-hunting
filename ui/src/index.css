@@ -1,0 +1,102 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-surface text-white font-sans antialiased;
+    background: #0d1117;
+    min-height: 100vh;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-surface-100;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-surface-400 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-brand-600;
+  }
+}
+
+@layer components {
+  .glass {
+    background: rgba(22, 27, 34, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .glass-hover {
+    @apply glass transition-all duration-200;
+  }
+  .glass-hover:hover {
+    background: rgba(33, 38, 45, 0.9);
+    border-color: rgba(40, 160, 255, 0.25);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(40, 160, 255, 0.1);
+  }
+
+  .btn-primary {
+    @apply bg-brand-600 hover:bg-brand-500 text-white font-medium px-4 py-2 rounded-lg 
+           transition-all duration-150 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-ghost {
+    @apply text-gray-400 hover:text-white hover:bg-surface-200 px-3 py-2 rounded-lg 
+           transition-all duration-150;
+  }
+
+  .skill-pill-green {
+    @apply bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 
+           text-xs font-medium px-2 py-0.5 rounded-full;
+  }
+
+  .skill-pill-amber {
+    @apply bg-amber-500/20 text-amber-300 border border-amber-500/30 
+           text-xs font-medium px-2 py-0.5 rounded-full;
+  }
+
+  .skill-pill-blue {
+    @apply bg-brand-500/20 text-brand-300 border border-brand-500/30 
+           text-xs font-medium px-2 py-0.5 rounded-full;
+  }
+
+  .input-field {
+    @apply bg-surface-200 border border-surface-400 text-white rounded-lg px-3 py-2
+           focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30
+           placeholder-gray-500 transition-all duration-150 text-sm;
+  }
+
+  .stat-card {
+    @apply glass rounded-xl p-5 flex flex-col gap-2;
+  }
+
+  .section-header {
+    @apply text-xs uppercase tracking-wider text-gray-500 font-semibold mb-3;
+  }
+}
+
+/* ATS Score Gauge ring animation */
+@keyframes dashOffset {
+  from { stroke-dashoffset: 283; }
+  to   { stroke-dashoffset: var(--target-offset); }
+}
+
+.gauge-ring {
+  animation: dashOffset 1.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}

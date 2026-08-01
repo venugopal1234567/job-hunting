@@ -1,0 +1,68 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: remotehunter-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: remotehunter
+      POSTGRES_USER: hunter
+      POSTGRES_PASSWORD: hunterpass
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - remotehunter-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hunter -d remotehunter"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: remotehunter-backend
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: remotehunter
+      DB_USER: hunter
+      DB_PASSWORD: hunterpass
+      # Ollama runs on your host machine - host.docker.internal routes to it from inside Docker
+      OLLAMA_HOST: http://host.docker.internal:11434
+      OLLAMA_MODEL: gemma4:e4b
+      SERVER_PORT: 8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - remotehunter-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    container_name: remotehunter-ui
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - remotehunter-net
+
+volumes:
+  pgdata:
+
+networks:
+  remotehunter-net:
+    driver: bridge
