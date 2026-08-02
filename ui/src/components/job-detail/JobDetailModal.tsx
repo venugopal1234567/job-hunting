@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import {
   X, ExternalLink, Cpu, Loader2, AlertCircle,
   CheckCircle2, AlertTriangle, MessageSquare, Lightbulb,
-  MapPin, DollarSign, Calendar
+  MapPin, DollarSign, Calendar, FileEdit
 } from 'lucide-react';
 import { Job, ATSAnalysis } from '../../types';
 import { useAtsAnalysis } from '../../hooks/useAtsAnalysis';
@@ -10,9 +10,10 @@ import { useAtsAnalysis } from '../../hooks/useAtsAnalysis';
 interface JobDetailModalProps {
   job: Job | null;
   onClose: () => void;
+  onEditResume?: (job: Job) => void;
 }
 
-const JobDetailModal: React.FC<JobDetailModalProps> = ({ job, onClose }) => {
+const JobDetailModal: React.FC<JobDetailModalProps> = ({ job, onClose, onEditResume }) => {
   const { analysis, loading, error, analyze, reset } = useAtsAnalysis();
 
   useEffect(() => {
@@ -66,6 +67,16 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({ job, onClose }) => {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
+            {onEditResume && (
+              <button
+                id="btn-edit-resume-for-job"
+                onClick={() => { onEditResume(job); onClose(); }}
+                className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 transition-all hover:scale-105"
+              >
+                <FileEdit className="w-3.5 h-3.5" />
+                Edit Resume
+              </button>
+            )}
             <a
               href={job.source_url}
               target="_blank"
@@ -251,15 +262,27 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({ job, onClose }) => {
               <p className="text-xs text-brand-300 font-semibold uppercase tracking-wider">Ready to apply?</p>
               <p className="text-sm font-bold text-white mt-0.5">{job.title} at {job.company}</p>
             </div>
-            <a
-              href={job.source_url}
-              target="_blank"
-              rel="noreferrer"
-              className="btn-primary text-sm font-semibold px-5 py-2.5 flex items-center gap-2 shadow-lg shadow-brand-500/30 hover:scale-105 transition-all w-full sm:w-auto justify-center"
-            >
-              Apply on {job.source_board}
-              <ExternalLink className="w-4 h-4" />
-            </a>
+            <div className="flex gap-2 w-full sm:w-auto">
+              {onEditResume && (
+                <button
+                  id="btn-edit-resume-banner"
+                  onClick={() => { onEditResume(job); onClose(); }}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-500/30 text-sm font-semibold transition-all hover:scale-105 w-full sm:w-auto justify-center"
+                >
+                  <FileEdit className="w-4 h-4" />
+                  Tailor Resume
+                </button>
+              )}
+              <a
+                href={job.source_url}
+                target="_blank"
+                rel="noreferrer"
+                className="btn-primary text-sm font-semibold px-5 py-2.5 flex items-center gap-2 shadow-lg shadow-brand-500/30 hover:scale-105 transition-all w-full sm:w-auto justify-center"
+              >
+                Apply on {job.source_board}
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            </div>
           </div>
         </div>
       </div>

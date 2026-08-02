@@ -58,21 +58,9 @@ func extractTextFromPDF(data []byte) string {
 	return cleanText(sb.String())
 }
 
-// cleanText normalizes whitespace and removes control characters
+// cleanText normalizes excess spaces but keeps original formatting structure
 func cleanText(s string) string {
-	// Replace multiple spaces/newlines with single ones
-	var sb strings.Builder
-	prevSpace := false
-	for _, r := range s {
-		if unicode.IsSpace(r) {
-			if !prevSpace {
-				sb.WriteRune(' ')
-			}
-			prevSpace = true
-		} else if unicode.IsPrint(r) {
-			sb.WriteRune(r)
-			prevSpace = false
-		}
-	}
-	return strings.TrimSpace(sb.String())
+	// Replaces carriage returns with standard newlines and returns trimmed string.
+	// We do NOT flatten newlines into a single space here so that resume document layout stays correct.
+	return strings.TrimSpace(strings.ReplaceAll(s, "\r", ""))
 }

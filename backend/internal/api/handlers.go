@@ -1,9 +1,11 @@
 package api
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"remotehunter/internal/ai"
@@ -97,11 +99,21 @@ func (h *Handler) GetJobs(c *gin.Context) {
 		argIdx += 2
 	}
 
-	// Filter by country
+	// Filter by multiple locations
 	if country != "" {
-		conditions = append(conditions, fmt.Sprintf("(j.country ILIKE $%d OR j.location ILIKE $%d)", argIdx, argIdx+1))
-		args = append(args, "%"+country+"%", "%"+country+"%")
-		argIdx += 2
+		locParts := strings.Split(country, ",")
+		var locConds []string
+		for _, part := range locParts {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				locConds = append(locConds, fmt.Sprintf("(j.country ILIKE $%d OR j.location ILIKE $%d)", argIdx, argIdx+1))
+				args = append(args, "%"+part+"%", "%"+part+"%")
+				argIdx += 2
+			}
+		}
+		if len(locConds) > 0 {
+			conditions = append(conditions, "("+strings.Join(locConds, " OR ")+")")
+		}
 	}
 
 	// Filter by target skills (if requested or inferred from active resume)
@@ -285,6 +297,19 @@ func (h *Handler) UploadResume(c *gin.Context) {
 		return
 	}
 
+	// Read raw bytes of the file for database storage
+	var pdfData []byte
+	if strings.HasSuffix(strings.ToLower(filename), ".pdf") {
+		var buf bytes.Buffer
+		if _, err := io.Copy(&buf, file); err == nil {
+			pdfData = buf.Bytes()
+		}
+		// Reset file seek pointer so parsing can read it from the beginning
+		if seeker, ok := file.(io.ReadSeeker); ok {
+			_, _ = seeker.Seek(0, io.SeekStart)
+		}
+	}
+
 	// Parse text content
 	rawText, err := resume.ParseText(file)
 	if err != nil {
@@ -303,10 +328,10 @@ func (h *Handler) UploadResume(c *gin.Context) {
 	var id string
 	var uploadedAt time.Time
 	err = h.db.QueryRow(`
-		INSERT INTO resumes (filename, raw_text, extracted_skills, is_active)
-		VALUES ($1, $2, $3, TRUE)
+		INSERT INTO resumes (filename, raw_text, extracted_skills, is_active, pdf_data)
+		VALUES ($1, $2, $3, TRUE, $4)
 		RETURNING id, uploaded_at`,
-		filename, rawText, string(skillsJSON),
+		filename, rawText, string(skillsJSON), pdfData,
 	).Scan(&id, &uploadedAt)
 
 	if err != nil {
@@ -332,11 +357,12 @@ func (h *Handler) UploadResume(c *gin.Context) {
 func (h *Handler) GetActiveResume(c *gin.Context) {
 	var r models.Resume
 	var skillsJSON []byte
+	var pdfData []byte
 
 	err := h.db.QueryRow(`
-		SELECT id, filename, raw_text, extracted_skills, uploaded_at
+		SELECT id, filename, raw_text, extracted_skills, uploaded_at, pdf_data
 		FROM resumes WHERE is_active = TRUE ORDER BY uploaded_at DESC LIMIT 1`).
-		Scan(&r.ID, &r.Filename, &r.RawText, &skillsJSON, &r.UploadedAt)
+		Scan(&r.ID, &r.Filename, &r.RawText, &skillsJSON, &r.UploadedAt, &pdfData)
 
 	if err == sql.ErrNoRows {
 		c.JSON(http.StatusNotFound, gin.H{"error": "no active resume"})
@@ -350,8 +376,33 @@ func (h *Handler) GetActiveResume(c *gin.Context) {
 	json.Unmarshal(skillsJSON, &r.ExtractedSkills)
 	r.RawTextLength = len(r.RawText)
 	r.IsActive = true
+	r.HasPDF = len(pdfData) > 0
 	r.RawText = "" // Don't return full text in list response
 	c.JSON(http.StatusOK, r)
+}
+
+// GetActiveResumePDF returns the original uploaded PDF file bytes
+func (h *Handler) GetActiveResumePDF(c *gin.Context) {
+	var pdfData []byte
+	err := h.db.QueryRow(`
+		SELECT pdf_data FROM resumes 
+		WHERE is_active = TRUE AND pdf_data IS NOT NULL 
+		ORDER BY uploaded_at DESC LIMIT 1`).Scan(&pdfData)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "no active PDF file found"})
+		} else {
+			log.Printf("[Handler] GetActiveResumePDF error: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch PDF"})
+		}
+		return
+	}
+
+	c.Header("Content-Type", "application/pdf")
+	c.Header("Content-Disposition", "inline; filename=resume.pdf")
+	c.Header("Content-Length", fmt.Sprintf("%d", len(pdfData)))
+	c.Writer.Write(pdfData)
 }
 
 // ─────────────────────────────────────────────────────
@@ -529,4 +580,212 @@ func (h *Handler) Health(c *gin.Context) {
 // generateUUID is a simple UUID generator helper
 func generateUUID() string {
 	return uuid.New().String()
+}
+
+// ─────────────────────────────────────────────────────
+// GET /resume/active/text  — full raw text for editor
+// ─────────────────────────────────────────────────────
+
+func (h *Handler) GetResumeFullText(c *gin.Context) {
+	var id, rawText string
+	var editedText sql.NullString
+
+	err := h.db.QueryRow(`
+		SELECT id, raw_text, edited_text
+		FROM resumes WHERE is_active = TRUE ORDER BY uploaded_at DESC LIMIT 1`).
+		Scan(&id, &rawText, &editedText)
+
+	if err == sql.ErrNoRows {
+		c.JSON(http.StatusNotFound, gin.H{"error": "no active resume"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+		return
+	}
+
+	// Return edited_text if present, else raw_text
+	text := rawText
+	if editedText.Valid && editedText.String != "" {
+		text = editedText.String
+	}
+
+	c.JSON(http.StatusOK, gin.H{"id": id, "text": text, "has_edits": editedText.Valid && editedText.String != ""})
+}
+
+// ─────────────────────────────────────────────────────
+// PUT /resume/active  — save edited text + re-extract skills
+// ─────────────────────────────────────────────────────
+
+func (h *Handler) UpdateResumeText(c *gin.Context) {
+	var body struct {
+		Text string `json:"text"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || body.Text == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "text field required"})
+		return
+	}
+
+	// Re-extract skills from new text
+	skills := resume.ExtractSkills(body.Text)
+	skillsJSON, _ := json.Marshal(skills)
+
+	var id string
+	err := h.db.QueryRow(`
+		UPDATE resumes SET edited_text = $1, extracted_skills = $2
+		WHERE is_active = TRUE
+		RETURNING id`, body.Text, string(skillsJSON)).
+		Scan(&id)
+
+	if err != nil {
+		log.Printf("[Handler] UpdateResumeText error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save"})
+		return
+	}
+
+	// Invalidate cached ATS analyses for this resume so they re-run
+	h.db.Exec(`DELETE FROM ats_analyses WHERE resume_id = $1`, id)
+
+	c.JSON(http.StatusOK, gin.H{"id": id, "skills": skills, "message": "saved"})
+}
+
+// ─────────────────────────────────────────────────────
+// POST /resume/chat  — AI resume editor chat
+// ─────────────────────────────────────────────────────
+
+func (h *Handler) ChatResume(c *gin.Context) {
+	var req models.ChatRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.Message == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "message field required"})
+		return
+	}
+
+	// Fetch job context if job_id provided
+	jobContext := ""
+	if req.JobID != "" {
+		var title, company, description string
+		err := h.db.QueryRow(`SELECT title, company, description FROM jobs WHERE id = $1`, req.JobID).
+			Scan(&title, &company, &description)
+		if err == nil {
+			jobContext = fmt.Sprintf("Job Title: %s\nCompany: %s\n\n%s", title, company, description)
+		}
+	}
+
+	response, err := h.aiClient.ChatWithResume(&req, jobContext)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "chat failed"})
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// ─────────────────────────────────────────────────────
+// GET /resume/versions  — list all applied snapshots
+// ─────────────────────────────────────────────────────
+
+func (h *Handler) GetResumeVersions(c *gin.Context) {
+	rows, err := h.db.Query(`
+		SELECT rv.id, rv.resume_id, rv.job_id, j.title, j.company,
+		       rv.label, rv.applied_at, rv.source
+		FROM resume_versions rv
+		LEFT JOIN jobs j ON j.id = rv.job_id
+		ORDER BY rv.applied_at DESC
+		LIMIT 50`)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+		return
+	}
+	defer rows.Close()
+
+	versions := []models.ResumeVersion{}
+	for rows.Next() {
+		var v models.ResumeVersion
+		var jobID, jobTitle, jobCompany sql.NullString
+		if err := rows.Scan(&v.ID, &v.ResumeID, &jobID, &jobTitle, &jobCompany, &v.Label, &v.AppliedAt, &v.Source); err != nil {
+			continue
+		}
+		if jobID.Valid {
+			v.JobID = jobID.String
+		}
+		if jobTitle.Valid {
+			v.JobTitle = jobTitle.String
+		}
+		if jobCompany.Valid {
+			v.JobCompany = jobCompany.String
+		}
+		versions = append(versions, v)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"versions": versions})
+}
+
+// ─────────────────────────────────────────────────────
+// POST /resume/versions  — save an applied snapshot
+// ─────────────────────────────────────────────────────
+
+func (h *Handler) SaveResumeVersion(c *gin.Context) {
+	var body struct {
+		SnapshotText string `json:"snapshot_text"`
+		JobID        string `json:"job_id"`
+		Label        string `json:"label"`
+		Source       string `json:"source"` // "editor" | "upload"
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || body.SnapshotText == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "snapshot_text required"})
+		return
+	}
+
+	// Get active resume id
+	var resumeID string
+	err := h.db.QueryRow(`SELECT id FROM resumes WHERE is_active = TRUE ORDER BY uploaded_at DESC LIMIT 1`).
+		Scan(&resumeID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no active resume"})
+		return
+	}
+
+	if body.Source == "" {
+		body.Source = "editor"
+	}
+
+	var versionID string
+	var jobIDArg interface{} = nil
+	if body.JobID != "" {
+		jobIDArg = body.JobID
+	}
+
+	err = h.db.QueryRow(`
+		INSERT INTO resume_versions (resume_id, job_id, snapshot_text, label, source)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id`,
+		resumeID, jobIDArg, body.SnapshotText, body.Label, body.Source).
+		Scan(&versionID)
+
+	if err != nil {
+		log.Printf("[Handler] SaveResumeVersion error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save version"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"id": versionID, "message": "version saved"})
+}
+
+// ─────────────────────────────────────────────────────
+// GET /resume/versions/:id/text — fetch snapshot text
+// ─────────────────────────────────────────────────────
+
+func (h *Handler) GetVersionText(c *gin.Context) {
+	versionID := c.Param("id")
+	var text string
+	err := h.db.QueryRow(`SELECT snapshot_text FROM resume_versions WHERE id = $1`, versionID).Scan(&text)
+	if err == sql.ErrNoRows {
+		c.JSON(http.StatusNotFound, gin.H{"error": "version not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"text": text})
 }

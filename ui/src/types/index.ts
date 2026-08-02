@@ -39,6 +39,7 @@ export interface Resume {
   raw_text_length: number;
   uploaded_at: string;
   is_active: boolean;
+  has_pdf?: boolean;
 }
 
 export interface GapQuestion {
@@ -74,4 +75,51 @@ export interface Settings {
   sources: ScraperConfig[];
   default_skills: string[];
   scrape_interval: string;
+}
+
+// ─── Resume Editor Types ──────────────────────────────────────────────────────
+
+export interface ProposedEdit {
+  id: string;
+  original: string;
+  replacement: string;
+  reason: string;
+}
+
+export interface GapQuestionPrompt {
+  skill: string;
+  question: string;
+}
+
+export type ChatMessageRole = 'user' | 'assistant' | 'system';
+
+export interface ChatMessage {
+  id: string;
+  role: ChatMessageRole;
+  content: string;
+  proposedEdits?: ProposedEdit[];
+  gapPrompts?: GapQuestionPrompt[];
+  timestamp: number;
+}
+
+export type TrackedChangeStatus = 'pending' | 'accepted' | 'rejected';
+
+export interface TrackedChange {
+  id: string;
+  original: string;
+  replacement: string;
+  reason: string;
+  status: TrackedChangeStatus;
+  messageId: string;
+}
+
+export interface ResumeVersion {
+  id: string;
+  resume_id: string;
+  job_id?: string;
+  job_title?: string;
+  job_company?: string;
+  label: string;
+  applied_at: string;
+  source: 'editor' | 'upload';
 }

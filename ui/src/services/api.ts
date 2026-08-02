@@ -54,6 +54,50 @@ export const getActiveResume = async (): Promise<Resume | null> => {
   }
 };
 
+export const getResumeFullText = async (): Promise<{ id: string; text: string; has_edits: boolean } | null> => {
+  try {
+    const { data } = await api.get('/resume/active/text');
+    return data;
+  } catch (err: any) {
+    if (err.response?.status === 404) return null;
+    throw err;
+  }
+};
+
+export const saveResumeText = async (text: string): Promise<{ id: string; skills: string[]; message: string }> => {
+  const { data } = await api.put('/resume/active', { text });
+  return data;
+};
+
+export const chatWithResume = async (
+  message: string,
+  resumeText: string,
+  jobId?: string
+): Promise<{ message: string; proposed_edits?: any[]; gap_prompts?: any[] }> => {
+  const { data } = await api.post('/resume/chat', { message, resume_text: resumeText, job_id: jobId || '' });
+  return data;
+};
+
+export const getResumeVersions = async () => {
+  const { data } = await api.get('/resume/versions');
+  return data.versions;
+};
+
+export const saveResumeVersion = async (params: {
+  snapshot_text: string;
+  job_id?: string;
+  label: string;
+  source: 'editor' | 'upload';
+}) => {
+  const { data } = await api.post('/resume/versions', params);
+  return data;
+};
+
+export const getVersionText = async (versionId: string): Promise<string> => {
+  const { data } = await api.get(`/resume/versions/${versionId}/text`);
+  return data.text;
+};
+
 // ─── Settings ──────────────────────────────────────────────────────────────────
 
 export const getSettings = async (): Promise<Settings> => {

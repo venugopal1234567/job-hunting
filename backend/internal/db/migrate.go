@@ -51,10 +51,28 @@ CREATE TABLE IF NOT EXISTS resumes (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     filename VARCHAR(255) NOT NULL,
     raw_text TEXT NOT NULL,
+    edited_text TEXT,
     extracted_skills JSONB,
     uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     is_active BOOLEAN DEFAULT TRUE
 );
+
+ALTER TABLE resumes ADD COLUMN IF NOT EXISTS edited_text TEXT;
+ALTER TABLE resumes ADD COLUMN IF NOT EXISTS pdf_data BYTEA;
+
+-- 4b. Resume Versions Table (applied snapshots)
+CREATE TABLE IF NOT EXISTS resume_versions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    resume_id UUID REFERENCES resumes(id) ON DELETE CASCADE,
+    job_id UUID REFERENCES jobs(id) ON DELETE SET NULL,
+    snapshot_text TEXT NOT NULL,
+    label VARCHAR(255),
+    applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    source VARCHAR(50) DEFAULT 'editor'
+);
+
+CREATE INDEX IF NOT EXISTS idx_resume_versions_resume ON resume_versions(resume_id);
+CREATE INDEX IF NOT EXISTS idx_resume_versions_job ON resume_versions(job_id);
 
 -- 5. ATS Analysis Reports Table
 CREATE TABLE IF NOT EXISTS ats_analyses (
@@ -79,7 +97,7 @@ CREATE TABLE IF NOT EXISTS scraper_configs (
     last_run_at TIMESTAMP WITH TIME ZONE
 );
 
--- Seed default scraper targets
+-- Seed default scraper targets (only inserts if not already present — preserves user edits)
 INSERT INTO scraper_configs (board_name, target_url, enabled, cron_schedule)
 VALUES
     ('Remotive', 'https://remotive.com/api/remote-jobs?category=software-dev&limit=50', true, '@every 1h'),
@@ -89,7 +107,7 @@ VALUES
     ('GolangProjects', 'https://www.golangprojects.com/rss.xml', true, '@every 1h'),
     ('HNHiring', 'https://hn.algolia.com/api/v1/search?query=golang+remote&tags=comment', true, '@every 1h'),
     ('BuiltIn Remote', 'https://builtin.com/jobs/remote/senior?search=Go&daysSinceUpdated=3&skills=Go%2CPython%2CAWS%2CDocker%2CGCP%2CTypescript%2CAzure%2CCi%2FCd%2CPostgres%2CRust%2CSQL%2CNode.js&country=IND&allLocations=true', true, '@every 2h')
-ON CONFLICT (board_name) DO UPDATE SET target_url = EXCLUDED.target_url, enabled = EXCLUDED.enabled;
+ON CONFLICT (board_name) DO NOTHING;
 
 
 -- Seed skill taxonomy

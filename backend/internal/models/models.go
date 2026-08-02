@@ -42,6 +42,7 @@ type Resume struct {
 	RawTextLength   int       `json:"raw_text_length"`
 	UploadedAt      time.Time `json:"uploaded_at"`
 	IsActive        bool      `json:"is_active"`
+	HasPDF          bool      `json:"has_pdf"`
 }
 
 // GapQuestion represents an interview preparation question for a missing skill
@@ -92,4 +93,45 @@ type JobFilterParams struct {
 	Country string
 	Page    int
 	Limit   int
+}
+
+// ProposedEdit is an AI-suggested change to a specific section of the resume
+type ProposedEdit struct {
+	ID          string `json:"id"`
+	Original    string `json:"original"`
+	Replacement string `json:"replacement"`
+	Reason      string `json:"reason"`
+}
+
+// GapQuestionPrompt is an interactive AI question about a missing skill
+type GapQuestionPrompt struct {
+	Skill    string `json:"skill"`
+	Question string `json:"question"`
+}
+
+// ChatRequest is the request payload for POST /resume/chat
+type ChatRequest struct {
+	Message    string `json:"message"`
+	ResumeText string `json:"resume_text"`
+	JobID      string `json:"job_id,omitempty"`
+}
+
+// ChatResponse is the AI assistant's response
+type ChatResponse struct {
+	Message       string              `json:"message"`
+	ProposedEdits []ProposedEdit      `json:"proposed_edits,omitempty"`
+	GapPrompts    []GapQuestionPrompt `json:"gap_prompts,omitempty"`
+}
+
+// ResumeVersion is a snapshot of a resume at the time of applying
+type ResumeVersion struct {
+	ID           string     `json:"id"`
+	ResumeID     string     `json:"resume_id"`
+	JobID        string     `json:"job_id,omitempty"`
+	JobTitle     string     `json:"job_title,omitempty"`
+	JobCompany   string     `json:"job_company,omitempty"`
+	SnapshotText string     `json:"snapshot_text"`
+	Label        string     `json:"label"`
+	AppliedAt    time.Time  `json:"applied_at"`
+	Source       string     `json:"source"`
 }

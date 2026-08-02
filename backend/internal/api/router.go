@@ -37,6 +37,13 @@ func SetupRouter(h *Handler) *gin.Engine {
 		{
 			res.POST("/upload", h.UploadResume)
 			res.GET("/active", h.GetActiveResume)
+			res.GET("/active/text", h.GetResumeFullText)
+			res.GET("/active/pdf", h.GetActiveResumePDF)
+			res.PUT("/active", h.UpdateResumeText)
+			res.POST("/chat", h.ChatResume)
+			res.GET("/versions", h.GetResumeVersions)
+			res.POST("/versions", h.SaveResumeVersion)
+			res.GET("/versions/:id/text", h.GetVersionText)
 		}
 
 		// Settings endpoints

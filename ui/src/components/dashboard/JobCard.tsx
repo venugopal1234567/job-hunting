@@ -1,10 +1,11 @@
 import React from 'react';
-import { ExternalLink, MapPin, DollarSign, Cpu, ChevronRight, Calendar } from 'lucide-react';
+import { ExternalLink, MapPin, DollarSign, ChevronRight, Calendar, FileEdit } from 'lucide-react';
 import { Job } from '../../types';
 
 interface JobCardProps {
   job: Job;
   onClick: (job: Job) => void;
+  onEditResume?: (job: Job) => void;
 }
 
 const SOURCE_COLORS: Record<string, string> = {
@@ -21,7 +22,7 @@ const ATS_COLOR = (score: number) => {
   return { ring: 'stroke-red-400', text: 'text-red-400', bg: 'bg-red-400' };
 };
 
-const JobCard: React.FC<JobCardProps> = ({ job, onClick }) => {
+const JobCard: React.FC<JobCardProps> = ({ job, onClick, onEditResume }) => {
   const hasAts = job.ats_score !== null && job.ats_score !== undefined;
   const atsColor = hasAts ? ATS_COLOR(job.ats_score!) : null;
   const sourceColorClass = SOURCE_COLORS[job.source_board] || 'bg-gray-500/20 text-gray-300 border-gray-500/30';
@@ -116,15 +117,27 @@ const JobCard: React.FC<JobCardProps> = ({ job, onClick }) => {
             <span key={skill} className="skill-pill-amber">{skill}</span>
           ))}
         </div>
-        <a
-          href={job.source_url}
-          target="_blank"
-          rel="noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className="text-[11px] font-semibold text-brand-300 hover:text-white bg-brand-600/20 hover:bg-brand-600/50 border border-brand-500/30 px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 flex-shrink-0"
-        >
-          Apply <ExternalLink className="w-3 h-3" />
-        </a>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {onEditResume && (
+            <button
+              id={`btn-card-edit-resume-${job.id}`}
+              onClick={(e) => { e.stopPropagation(); onEditResume(job); }}
+              className="text-[11px] font-semibold text-purple-300 hover:text-white bg-purple-600/20 hover:bg-purple-600/40 border border-purple-500/30 px-2.5 py-1 rounded-lg transition-all flex items-center gap-1"
+              title="Tailor your resume for this job"
+            >
+              <FileEdit className="w-3 h-3" /> Tailor
+            </button>
+          )}
+          <a
+            href={job.source_url}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="text-[11px] font-semibold text-brand-300 hover:text-white bg-brand-600/20 hover:bg-brand-600/50 border border-brand-500/30 px-2.5 py-1 rounded-lg transition-all flex items-center gap-1"
+          >
+            Apply <ExternalLink className="w-3 h-3" />
+          </a>
+        </div>
       </div>
     </div>
   );

@@ -100,3 +100,130 @@
 .gauge-ring {
   animation: dashOffset 1.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
+
+/* Fade in animation */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+/* Resume editor textarea */
+/* Center-page layout resembling Google Docs */
+.resume-editor-pane {
+  background: #1e1e24 !important; /* Page canvas background */
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.print-area {
+  background: #141416; /* Deep dark area behind the document */
+  display: flex !important;
+  justify-content: center !important;
+  padding: 2rem 1rem !important;
+  overflow-y: auto !important;
+  flex: 1 !important;
+}
+
+/* The page sheet itself */
+.editor-textarea {
+  background: #ffffff !important;
+  color: #1e293b !important; /* Off-black */
+  font-family: 'Inter', system-ui, sans-serif !important;
+  width: 8.5in !important; /* Standard Letter width */
+  min-height: 11in !important; /* Standard Letter height */
+  height: auto !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5) !important;
+  border-radius: 4px !important;
+  border: 1px solid #e2e8f0 !important;
+  box-sizing: border-box !important;
+  resize: none !important;
+  caret-color: #2563eb !important; /* Blue insertion cursor */
+  outline: none !important;
+  display: block !important;
+  margin: 0 auto !important;
+}
+
+.editor-textarea::selection {
+  background: #bfdbfe !important; /* Soft blue selection */
+  color: #1e3a8a !important;
+}
+
+/* ─── Print / PDF Styles ──────────────────────────────────────────────────── */
+@media print {
+  /* Hide all UI elements */
+  .no-print,
+  #chat-panel,
+  #ats-score-bar,
+  header,
+  nav,
+  footer {
+    display: none !important;
+  }
+
+  /* Reset all parent container layouts to standard block elements for natural page breaks */
+  body, 
+  #root,
+  main,
+  .w-full,
+  .resume-editor-pane,
+  .flex.gap-4,
+  .flex.flex-col {
+    background: transparent !important;
+    background-color: transparent !important;
+    height: auto !important;
+    min-height: unset !important;
+    max-height: unset !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+    width: 100% !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  /* Print container */
+  .print-area {
+    background: white !important;
+    background-color: white !important;
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: unset !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Resume sheet page */
+  .editor-textarea {
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: unset !important;
+    padding: 0.8in 0.6in !important; /* Professional margins */
+    margin: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: white !important;
+    background-color: white !important;
+    overflow: visible !important;
+    color: #1e293b !important;
+  }
+
+  /* Force colored rules and accents to print */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  @page {
+    margin: 0;
+    size: letter;
+  }
+}

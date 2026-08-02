@@ -4,7 +4,7 @@ import StatsOverview from './components/dashboard/StatsOverview';
 import JobFilterBar from './components/dashboard/JobFilterBar';
 import JobCard from './components/dashboard/JobCard';
 import JobDetailModal from './components/job-detail/JobDetailModal';
-import ResumeUploader from './components/resume/ResumeUploader';
+import ResumeEditor from './components/resume/ResumeEditor';
 import SourceManager from './components/settings/SourceManager';
 import { useJobs } from './hooks/useJobs';
 import { useResume } from './hooks/useResume';
@@ -17,6 +17,7 @@ type ActiveTab = 'dashboard' | 'resume' | 'settings';
 function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [viewingJob, setViewingJob] = useState<Job | null>(null);
   const [currentFilters, setCurrentFilters] = useState<JobFilterParams>({ days: 30, page: 1, limit: 20 });
   const [apiHealthy, setApiHealthy] = useState(false);
 
@@ -34,6 +35,12 @@ function App() {
     setCurrentFilters(params);
     refresh(params);
   }, [refresh]);
+
+  const handleEditResume = useCallback((job: Job) => {
+    setSelectedJob(job);   // keep job selected for ATS context
+    setViewingJob(null);    // close the detail modal
+    setActiveTab('resume');
+  }, []);
 
   const highAtsCount = jobs.filter(j => j.ats_score !== null && j.ats_score >= 80).length;
 
@@ -112,7 +119,7 @@ function App() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                   {jobs.map(job => (
-                    <JobCard key={job.id} job={job} onClick={setSelectedJob} />
+                    <JobCard key={job.id} job={job} onClick={setViewingJob} onEditResume={handleEditResume} />
                   ))}
                 </div>
               </>
@@ -122,14 +129,19 @@ function App() {
 
         {/* ─── Resume Tab ─── */}
         {activeTab === 'resume' && (
-          <div className="max-w-2xl mx-auto">
-            <div className="mb-6">
-              <h2 className="text-xl font-bold text-white">Resume Manager</h2>
+          <div className="w-full">
+            <div className="mb-5 no-print">
+              <h2 className="text-xl font-bold text-white">Resume Editor</h2>
               <p className="text-sm text-gray-400 mt-1">
-                Upload your resume to enable AI-powered ATS matching and skill gap analysis.
+                AI-powered editor · Accept/Reject changes · Live ATS score · PDF export
+                {selectedJob && (
+                  <span className="ml-2 text-brand-300">
+                    — Tailoring for: {selectedJob.title} @ {selectedJob.company}
+                  </span>
+                )}
               </p>
             </div>
-            <ResumeUploader />
+            <ResumeEditor selectedJob={selectedJob} />
           </div>
         )}
 
@@ -150,7 +162,11 @@ function App() {
       </main>
 
       {/* Job Detail Modal */}
-      <JobDetailModal job={selectedJob} onClose={() => setSelectedJob(null)} />
+      <JobDetailModal
+        job={viewingJob}
+        onClose={() => setViewingJob(null)}
+        onEditResume={handleEditResume}
+      />
     </div>
   );
 }
