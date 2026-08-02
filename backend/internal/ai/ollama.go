@@ -80,20 +80,36 @@ func (c *Client) AnalyzeATSMatch(job *models.Job, resume *models.Resume) (*model
 	return parseATSResponse(ollamaResp.Response, job, resume)
 }
 
-// buildATSPrompt constructs a structured JSON-requesting prompt
+// buildATSPrompt constructs a structured JSON-requesting prompt for any job/resume
+// buildATSPrompt constructs a structured JSON-requesting prompt for any job/resume
 func buildATSPrompt(job *models.Job, resume *models.Resume) string {
 	resumeSkills := strings.Join(resume.ExtractedSkills, ", ")
 
-	return fmt.Sprintf(`You are an expert ATS (Applicant Tracking System) resume analyst.
+	// Note: Escaped % symbols in the prompt text as %% so fmt.Sprintf doesn't break
+	return fmt.Sprintf(`You are an extremely strict, literal Applicant Tracking System (ATS) algorithm. You are ruthless in your evaluation.
 
-Analyze the following job description against the candidate's resume and respond ONLY with a valid JSON object matching exactly this schema:
+Your task is to analyze the Candidate Resume against the Job Description and calculate a realistic ATS Match Score. 
+LLMs usually inflate scores. You must NOT inflate the score. A resume from a different sub-field (e.g., Backend Engineering vs. Test Automation) should score poorly (under 70%%), even if the candidate is highly experienced.
+
+SCORING ALGORITHM (Start at 100, apply deductions):
+1. Domain & Title Match (Deduct up to 30 points): If the candidate's recent job titles and core daily work do NOT perfectly match the target role's specific domain, DEDUCT 20-30 points immediately. 
+2. Missing Mandatory Tools/Frameworks (Deduct 5 points EACH): Identify the top 5 specific tools, frameworks, or protocols in the job description. For EVERY one missing from the resume, deduct 5 points. (General concepts do not count. A generic tool does not count for a specific one).
+3. Experience & Seniority (Deduct up to 20 points): Deduct points if years of experience or scope of responsibility don't align.
+
+HARD CAP: If the candidate is transitioning between domains (e.g., Software Engineering to Network Automation) or is missing more than half of the specific technical keywords, the final score MUST be between 40 and 70.
+
+Respond ONLY with a valid JSON object matching exactly this schema:
 {
-  "ats_score": <integer 0-100>,
-  "matched_skills": [<list of skills from resume that match the job>],
-  "missing_skills": [<list of skills the job requires that the candidate lacks>],
-  "actionable_suggestions": [<2-4 specific bullet points to improve the resume for this role>],
+  "score_reasoning": "<1-2 sentences explaining exactly what points were deducted for missing domains or specific tools. Write this FIRST.>",
+  "ats_score": <integer from 0 to 100>,
+  "matched_skills": ["<skill 1>", "<skill 2>"],
+  "missing_skills": ["<missing specific framework/skill 1>", "<missing specific framework/skill 2>"],
+  "actionable_suggestions": ["<specific resume edit 1>", "<specific resume edit 2>"],
   "gap_questions": [
-    {"skill": "<skill name>", "question": "<specific interview prep question about that skill gap>"}
+    {
+      "skill": "<missing skill name>",
+      "question": "<interview prep question>"
+    }
   ]
 }
 
@@ -106,12 +122,12 @@ CANDIDATE SKILLS: %s
 CANDIDATE RESUME EXCERPT:
 %s
 
-Respond only with the JSON object, no other text.`,
+OUTPUT STRICTLY JSON:`,
 		job.Title,
 		job.Company,
-		truncate(job.Description, 2000),
+		truncate(job.Description, 6000),
 		resumeSkills,
-		truncate(resume.RawText, 1500),
+		truncate(resume.RawText, 6000),
 	)
 }
 
@@ -135,7 +151,7 @@ func parseATSResponse(raw string, job *models.Job, resume *models.Resume) (*mode
 	}
 
 	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
-		log.Printf("[AI] Failed to parse LLM JSON response, using fallback: %v", err)
+		log.Printf("[AI] Failed to parse LLM JSON response, using fallback: %v. Raw response: %s", err, raw)
 		return fallbackAnalysis(job, resume), nil
 	}
 

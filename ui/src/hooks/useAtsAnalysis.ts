@@ -7,11 +7,11 @@ export const useAtsAnalysis = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const analyze = async (jobId: string, resumeId?: string) => {
+  const analyze = async (jobId: string, resumeId?: string, force = false) => {
     setLoading(true);
     setError(null);
     try {
-      const result = await analyzeJob(jobId, resumeId);
+      const result = await analyzeJob(jobId, resumeId, force);
       setAnalysis(result);
       return result;
     } catch (err: any) {

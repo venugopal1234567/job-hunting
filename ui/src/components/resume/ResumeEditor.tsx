@@ -433,11 +433,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
     };
   }, [editorContent, isDirty]);
 
-  const runATS = useCallback(async () => {
+  const runATS = useCallback(async (force = true) => {
     if (!selectedJob) return;
     setAtsLoading(true);
     try {
-      const result = await analyzeJob(selectedJob.id);
+      const result = await analyzeJob(selectedJob.id, undefined, force);
       setPrevAtsScore(atsScore);
       setAtsScore(result.ats_score);
     } catch {

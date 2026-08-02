@@ -446,23 +446,26 @@ func (h *Handler) AnalyzeJob(c *gin.Context) {
 	}
 	json.Unmarshal(skillsJSON, &res.ExtractedSkills)
 
-	// Check for cached analysis
-	var cached models.ATSAnalysis
 	var mbJSON, suggestJSON, gapJSON []byte
-	cacheErr := h.db.QueryRow(`
-		SELECT id, ats_score, match_breakdown, actionable_suggestions, gap_questions, analyzed_at
-		FROM ats_analyses WHERE job_id = $1 AND resume_id = $2`,
-		jobID, res.ID).
-		Scan(&cached.ID, &cached.ATSScore, &mbJSON, &suggestJSON, &gapJSON, &cached.AnalyzedAt)
 
-	if cacheErr == nil {
-		json.Unmarshal(mbJSON, &cached.MatchBreakdown)
-		json.Unmarshal(suggestJSON, &cached.ActionableSuggestions)
-		json.Unmarshal(gapJSON, &cached.GapQuestions)
-		cached.JobID = jobID
-		cached.ResumeID = res.ID
-		c.JSON(http.StatusOK, cached)
-		return
+	// Check for cached analysis unless forced
+	if c.Query("force") != "true" {
+		var cached models.ATSAnalysis
+		cacheErr := h.db.QueryRow(`
+			SELECT id, ats_score, match_breakdown, actionable_suggestions, gap_questions, analyzed_at
+			FROM ats_analyses WHERE job_id = $1 AND resume_id = $2`,
+			jobID, res.ID).
+			Scan(&cached.ID, &cached.ATSScore, &mbJSON, &suggestJSON, &gapJSON, &cached.AnalyzedAt)
+
+		if cacheErr == nil {
+			json.Unmarshal(mbJSON, &cached.MatchBreakdown)
+			json.Unmarshal(suggestJSON, &cached.ActionableSuggestions)
+			json.Unmarshal(gapJSON, &cached.GapQuestions)
+			cached.JobID = jobID
+			cached.ResumeID = res.ID
+			c.JSON(http.StatusOK, cached)
+			return
+		}
 	}
 
 	// Run AI analysis

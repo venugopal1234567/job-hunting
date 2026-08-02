@@ -107,7 +107,7 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({ job, onClose, onEditRes
               {!loading && (
                 <button
                   id="btn-run-ats-analysis"
-                  onClick={() => analyze(job.id)}
+                  onClick={() => analyze(job.id, undefined, true)}
                   className="btn-primary text-xs flex items-center gap-1.5"
                 >
                   <Cpu className="w-3 h-3" />

@@ -28,8 +28,9 @@ export const triggerScrape = async (): Promise<{ message: string }> => {
 
 // ─── ATS Analysis ──────────────────────────────────────────────────────────────
 
-export const analyzeJob = async (jobId: string, resumeId?: string): Promise<ATSAnalysis> => {
-  const { data } = await api.post<ATSAnalysis>(`/jobs/${jobId}/analyze`, resumeId ? { resume_id: resumeId } : {});
+export const analyzeJob = async (jobId: string, resumeId?: string, force = false): Promise<ATSAnalysis> => {
+  const url = `/jobs/${jobId}/analyze${force ? '?force=true' : ''}`;
+  const { data } = await api.post<ATSAnalysis>(url, resumeId ? { resume_id: resumeId } : {});
   return data;
 };
 
