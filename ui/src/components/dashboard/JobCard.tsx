@@ -106,23 +106,26 @@ const JobCard: React.FC<JobCardProps> = ({ job, onClick }) => {
         )}
       </div>
 
-      {/* Skills */}
-      {((job.matched_skills?.length || 0) > 0 || (job.missing_skills?.length || 0) > 0) && (
-        <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-white/5">
-          {job.matched_skills?.slice(0, 4).map(skill => (
+      {/* Card Footer with Skills & Direct Apply Link */}
+      <div className="flex flex-wrap items-center justify-between gap-2 mt-3 pt-3 border-t border-white/5">
+        <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
+          {job.matched_skills?.slice(0, 3).map(skill => (
             <span key={skill} className="skill-pill-green">{skill}</span>
           ))}
-          {job.missing_skills?.slice(0, 2).map(skill => (
+          {job.missing_skills?.slice(0, 1).map(skill => (
             <span key={skill} className="skill-pill-amber">{skill}</span>
           ))}
-          {!hasAts && (
-            <span className="flex items-center gap-1 text-[10px] text-gray-600 ml-auto">
-              <Cpu className="w-3 h-3" />
-              Analyze with AI
-            </span>
-          )}
         </div>
-      )}
+        <a
+          href={job.source_url}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="text-[11px] font-semibold text-brand-300 hover:text-white bg-brand-600/20 hover:bg-brand-600/50 border border-brand-500/30 px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 flex-shrink-0"
+        >
+          Apply <ExternalLink className="w-3 h-3" />
+        </a>
+      </div>
     </div>
   );
 };

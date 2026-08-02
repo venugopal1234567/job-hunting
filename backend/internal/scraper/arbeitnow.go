@@ -44,16 +44,16 @@ func (s *ArbeitnowScraper) Scrape(targetURL string) ([]models.Job, error) {
 
 	var result struct {
 		Data []struct {
-			Slug        string   `json:"slug"`
-			CompanyName string   `json:"company_name"`
-			Title       string   `json:"title"`
-			Description string   `json:"description"`
-			Remote      bool     `json:"remote"`
-			URL         string   `json:"url"`
-			Tags        []string `json:"tags"`
-			JobTypes    []string `json:"job_types"`
-			Location    string   `json:"location"`
-			CreatedAt   int64    `json:"created_at"`
+			Slug        string      `json:"slug"`
+			CompanyName string      `json:"company_name"`
+			Title       string      `json:"title"`
+			Description string      `json:"description"`
+			Remote      bool        `json:"remote"`
+			URL         string      `json:"url"`
+			Tags        interface{} `json:"tags"`
+			JobTypes    []string    `json:"job_types"`
+			Location    string      `json:"location"`
+			CreatedAt   int64       `json:"created_at"`
 		} `json:"data"`
 	}
 

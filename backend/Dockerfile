@@ -27,7 +27,8 @@ RUN apk add --no-cache \
     harfbuzz \
     ttf-freefont \
     font-noto-emoji \
-    udev
+    udev \
+    poppler-utils
 
 # Tell chromedp where to find Chromium on Alpine
 ENV CHROME_PATH=/usr/bin/chromium-browser

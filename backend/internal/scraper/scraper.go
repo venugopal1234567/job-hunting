@@ -22,10 +22,6 @@ func ComputeJobHash(title, company, sourceURL string) string {
 
 // NormalizeJob sets defaults and computes the hash for a scraped job
 func NormalizeJob(job *models.Job) {
-	if job.PostedAt == nil {
-		now := time.Now()
-		job.PostedAt = &now
-	}
 	job.ScrapedAt = time.Now()
 	job.IsActive = true
 	job.JobHash = ComputeJobHash(job.Title, job.Company, job.SourceURL)

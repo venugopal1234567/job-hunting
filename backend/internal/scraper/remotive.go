@@ -25,11 +25,15 @@ func NewRemotiveScraper() *RemotiveScraper {
 func (s *RemotiveScraper) Name() string { return "remotive" }
 
 func (s *RemotiveScraper) Scrape(targetURL string) ([]models.Job, error) {
+	if targetURL == "" || strings.Contains(targetURL, "search=") {
+		targetURL = "https://remotive.com/api/remote-jobs?category=software-dev&limit=50"
+	}
+
 	req, err := http.NewRequest("GET", targetURL, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "RemoteHunter/1.0")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := s.client.Do(req)
@@ -115,7 +119,7 @@ func inferCountry(location string) string {
 		return "US"
 	case strings.Contains(loc, "europe") || strings.Contains(loc, "eu only"):
 		return "Europe"
-	case strings.Contains(loc, "india"):
+	case strings.Contains(loc, "india") || strings.Contains(loc, "ind") || strings.Contains(loc, "karnataka") || strings.Contains(loc, "bangalore") || strings.Contains(loc, "bengaluru"):
 		return "India"
 	case strings.Contains(loc, "uk") || strings.Contains(loc, "united kingdom"):
 		return "UK"

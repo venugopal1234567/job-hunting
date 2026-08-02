@@ -35,9 +35,10 @@ func NewHandler(db *sql.DB, aiClient *ai.Client, scheduler *scraper.Scheduler) *
 // ─────────────────────────────────────────────────────
 
 func (h *Handler) GetJobs(c *gin.Context) {
-	// Parse query params
+	// Parse query params (default to 30 days window)
 	skillsParam := c.DefaultQuery("skills", "")
-	days, _ := strconv.Atoi(c.DefaultQuery("days", "1"))
+	daysStr := c.DefaultQuery("days", "30")
+	days, _ := strconv.Atoi(daysStr)
 	country := c.DefaultQuery("country", "")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
@@ -49,28 +50,10 @@ func (h *Handler) GetJobs(c *gin.Context) {
 		limit = 20
 	}
 	if days < 1 {
-		days = 1
+		days = 30
 	}
 
-	// Build dynamic SQL query
-	args := []interface{}{}
-	conditions := []string{"j.is_active = TRUE"}
-	argIdx := 1
-
-	// Filter by days
-	cutoff := time.Now().AddDate(0, 0, -days)
-	conditions = append(conditions, fmt.Sprintf("j.scraped_at >= $%d", argIdx))
-	args = append(args, cutoff)
-	argIdx++
-
-	// Filter by country
-	if country != "" {
-		conditions = append(conditions, fmt.Sprintf("(j.country ILIKE $%d OR j.location ILIKE $%d)", argIdx, argIdx+1))
-		args = append(args, "%"+country+"%", "%"+country+"%")
-		argIdx += 2
-	}
-
-	// Filter by skills (any job containing at least one of the requested skills in description or title)
+	// If no skills param provided, fetch active resume skills for candidate relevance
 	requestedSkills := []string{}
 	if skillsParam != "" {
 		for _, s := range strings.Split(skillsParam, ",") {
@@ -79,14 +62,65 @@ func (h *Handler) GetJobs(c *gin.Context) {
 				requestedSkills = append(requestedSkills, s)
 			}
 		}
+	} else {
+		var skillsJSON []byte
+		_ = h.db.QueryRow(`SELECT extracted_skills FROM resumes WHERE is_active = TRUE ORDER BY uploaded_at DESC LIMIT 1`).Scan(&skillsJSON)
+		if len(skillsJSON) > 0 {
+			_ = json.Unmarshal(skillsJSON, &requestedSkills)
+		}
 	}
 
+	// Build dynamic SQL query
+	args := []interface{}{}
+	conditions := []string{
+		"j.is_active = TRUE",
+		`LOWER(j.source_board) IN (
+			SELECT CASE 
+				WHEN LOWER(board_name) LIKE '%builtin%' THEN 'builtin'
+				ELSE LOWER(REGEXP_REPLACE(board_name, '\s+', '', 'g'))
+			END
+			FROM scraper_configs
+			WHERE enabled = TRUE
+		)`,
+	}
+	argIdx := 1
+
+	// Filter by date cutoff (strict for short windows like 24h/3d/7d)
+	cutoff := time.Now().AddDate(0, 0, -days)
+	if days <= 7 {
+		conditions = append(conditions, fmt.Sprintf("j.posted_at >= $%d", argIdx))
+		args = append(args, cutoff)
+		argIdx++
+	} else {
+		conditions = append(conditions, fmt.Sprintf("(j.posted_at >= $%d OR (j.posted_at IS NULL AND j.scraped_at >= $%d))", argIdx, argIdx+1))
+		args = append(args, cutoff, cutoff)
+		argIdx += 2
+	}
+
+	// Filter by country
+	if country != "" {
+		conditions = append(conditions, fmt.Sprintf("(j.country ILIKE $%d OR j.location ILIKE $%d)", argIdx, argIdx+1))
+		args = append(args, "%"+country+"%", "%"+country+"%")
+		argIdx += 2
+	}
+
+	// Filter by target skills (if requested or inferred from active resume)
 	if len(requestedSkills) > 0 {
 		skillConds := []string{}
 		for _, sk := range requestedSkills {
-			skillConds = append(skillConds, fmt.Sprintf("(j.title ILIKE $%d OR j.description ILIKE $%d)", argIdx, argIdx+1))
-			args = append(args, "%"+sk+"%", "%"+sk+"%")
-			argIdx += 2
+			skLower := strings.ToLower(sk)
+			if skLower == "go" || skLower == "golang" {
+				skillConds = append(skillConds,
+					fmt.Sprintf("(j.title ILIKE $%d OR j.description ILIKE $%d OR j.title ILIKE $%d OR j.description ILIKE $%d)",
+						argIdx, argIdx+1, argIdx+2, argIdx+3),
+				)
+				args = append(args, "%Go%", "%Go%", "%Golang%", "%Golang%")
+				argIdx += 4
+			} else {
+				skillConds = append(skillConds, fmt.Sprintf("(j.title ILIKE $%d OR j.description ILIKE $%d)", argIdx, argIdx+1))
+				args = append(args, "%"+sk+"%", "%"+sk+"%")
+				argIdx += 2
+			}
 		}
 		conditions = append(conditions, "("+strings.Join(skillConds, " OR ")+")")
 	}

@@ -1,17 +1,16 @@
 package scraper
 
 import (
+	"encoding/xml"
 	"fmt"
 	"log"
 	"net/http"
 	"remotehunter/internal/models"
 	"strings"
 	"time"
-
-	"golang.org/x/net/html"
 )
 
-// GolangProjectsScraper scrapes https://www.golangprojects.com/golang-remote-jobs.html
+// GolangProjectsScraper parses the GolangProjects RSS feed
 type GolangProjectsScraper struct {
 	client *http.Client
 }
@@ -25,101 +24,78 @@ func NewGolangProjectsScraper() *GolangProjectsScraper {
 func (s *GolangProjectsScraper) Name() string { return "golangprojects" }
 
 func (s *GolangProjectsScraper) Scrape(targetURL string) ([]models.Job, error) {
-	resp, err := s.client.Get(targetURL)
+	rssURL := "https://www.golangprojects.com/rss.xml"
+
+	req, err := http.NewRequest("GET", rssURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("golangprojects fetch: %w", err)
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "application/rss+xml, application/xml, text/xml, */*")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("golangprojects rss fetch: %w", err)
 	}
 	defer resp.Body.Close()
 
-	doc, err := html.Parse(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("golangprojects parse html: %w", err)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("golangprojects: HTTP %d", resp.StatusCode)
+	}
+
+	type Item struct {
+		GUID        string `xml:"guid"`
+		Title       string `xml:"title"`
+		Link        string `xml:"link"`
+		Description string `xml:"description"`
+	}
+
+	type RSS struct {
+		Items []Item `xml:"channel>item"`
+	}
+
+	var rss RSS
+	if err := xml.NewDecoder(resp.Body).Decode(&rss); err != nil {
+		return nil, fmt.Errorf("golangprojects xml decode: %w", err)
 	}
 
 	var jobs []models.Job
-	var walk func(*html.Node)
-	walk = func(n *html.Node) {
-		if n.Type == html.ElementNode && n.Data == "div" {
-			for _, a := range n.Attr {
-				if a.Key == "class" && strings.Contains(a.Val, "job-") {
-					job := extractGolangProjectsJob(n)
-					if job != nil {
-						NormalizeJob(job)
-						jobs = append(jobs, *job)
-					}
-				}
-			}
+	for _, item := range rss.Items {
+		// Title format: "Software Engineer (Go) @ Company"
+		title := item.Title
+		company := "Golang Company"
+
+		if idx := strings.Index(title, " @ "); idx > 0 {
+			company = strings.TrimSpace(title[idx+3:])
+			title = strings.TrimSpace(title[:idx])
 		}
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			walk(c)
+
+		desc := stripHTML(item.Description)
+		if desc == "" {
+			desc = title + " at " + company
 		}
+		if len(desc) > 3000 {
+			desc = desc[:3000] + "..."
+		}
+
+		link := item.Link
+		if link == "" {
+			link = item.GUID
+		}
+
+		job := &models.Job{
+			Title:       title,
+			Company:     company,
+			SourceURL:   link,
+			SourceBoard: "golangprojects",
+			Description: desc,
+			Location:    "Remote",
+			Country:     inferCountry(desc),
+		}
+		NormalizeJob(job)
+		jobs = append(jobs, *job)
 	}
-	walk(doc)
 
 	log.Printf("[Scraper] GolangProjects: scraped %d jobs", len(jobs))
 	return jobs, nil
-}
-
-func extractGolangProjectsJob(n *html.Node) *models.Job {
-	job := &models.Job{
-		SourceBoard: "golangprojects",
-		Country:     "Worldwide",
-		Location:    "Remote",
-	}
-
-	var getText func(*html.Node) string
-	getText = func(n *html.Node) string {
-		if n.Type == html.TextNode {
-			return n.Data
-		}
-		var result string
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			result += getText(c)
-		}
-		return result
-	}
-
-	var walk func(*html.Node)
-	walk = func(n *html.Node) {
-		if n.Type == html.ElementNode {
-			switch n.Data {
-			case "h2", "h3":
-				text := strings.TrimSpace(getText(n))
-				if text != "" && job.Title == "" {
-					job.Title = text
-				}
-			case "a":
-				for _, a := range n.Attr {
-					if a.Key == "href" && strings.Contains(a.Val, "/golang-go-job-") {
-						if strings.HasPrefix(a.Val, "http") {
-							job.SourceURL = a.Val
-						} else {
-							job.SourceURL = "https://www.golangprojects.com" + a.Val
-						}
-					}
-				}
-				text := strings.TrimSpace(getText(n))
-				if text != "" && job.Company == "" && job.Title != "" {
-					job.Company = text
-				}
-			case "p":
-				text := strings.TrimSpace(getText(n))
-				if text != "" && job.Description == "" && len(text) > 20 {
-					job.Description = text
-				}
-			}
-		}
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			walk(c)
-		}
-	}
-	walk(n)
-
-	if job.Title == "" || job.Company == "" {
-		return nil
-	}
-	if job.Description == "" {
-		job.Description = job.Title + " at " + job.Company
-	}
-	return job
 }

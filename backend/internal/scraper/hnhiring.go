@@ -1,17 +1,16 @@
 package scraper
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"remotehunter/internal/models"
 	"strings"
 	"time"
-
-	"golang.org/x/net/html"
 )
 
-// HNHiringScraper scrapes https://hnhiring.com/technologies/go
+// HNHiringScraper uses Hacker News Algolia API to fetch real-time remote developer postings
 type HNHiringScraper struct {
 	client *http.Client
 }
@@ -25,11 +24,13 @@ func NewHNHiringScraper() *HNHiringScraper {
 func (s *HNHiringScraper) Name() string { return "hnhiring" }
 
 func (s *HNHiringScraper) Scrape(targetURL string) ([]models.Job, error) {
-	req, err := http.NewRequest("GET", targetURL, nil)
+	apiURL := "https://hn.algolia.com/api/v1/search?query=golang+remote&tags=comment&hitsPerPage=40"
+
+	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; RemoteHunter/1.0)")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -37,90 +38,77 @@ func (s *HNHiringScraper) Scrape(targetURL string) ([]models.Job, error) {
 	}
 	defer resp.Body.Close()
 
-	doc, err := html.Parse(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("hnhiring parse html: %w", err)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("hnhiring: HTTP %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Hits []struct {
+			ObjectID    string `json:"objectID"`
+			CommentText string `json:"comment_text"`
+			StoryID     int    `json:"story_id"`
+			CreatedAt   string `json:"created_at"`
+			Author      string `json:"author"`
+		} `json:"hits"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("hnhiring decode: %w", err)
 	}
 
 	var jobs []models.Job
-	var walk func(*html.Node)
-	walk = func(n *html.Node) {
-		if n.Type == html.ElementNode && n.Data == "article" {
-			job := extractHNJob(n)
-			if job != nil {
-				NormalizeJob(job)
-				jobs = append(jobs, *job)
+	for _, hit := range result.Hits {
+		text := stripHTML(hit.CommentText)
+		if len(text) < 30 {
+			continue
+		}
+
+		lines := strings.Split(text, "|")
+		company := "HN Startup"
+		title := "Go / Backend Engineer"
+
+		if len(lines) > 0 {
+			company = strings.TrimSpace(lines[0])
+		}
+		if len(lines) > 1 {
+			title = strings.TrimSpace(lines[1])
+		}
+
+		if company == "" {
+			company = "HackerNews Poster"
+		}
+		if title == "" {
+			title = "Software Engineer (Golang / Remote)"
+		}
+
+		desc := text
+		if len(desc) > 3000 {
+			desc = desc[:3000] + "..."
+		}
+
+		url := fmt.Sprintf("https://news.ycombinator.com/item?id=%s", hit.ObjectID)
+
+		var postedAt *time.Time
+		if hit.CreatedAt != "" {
+			if t, err := time.Parse(time.RFC3339, hit.CreatedAt); err == nil {
+				postedAt = &t
 			}
 		}
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			walk(c)
-		}
-	}
-	walk(doc)
 
-	log.Printf("[Scraper] HNHiring: scraped %d jobs", len(jobs))
+		job := &models.Job{
+			Title:       title,
+			Company:     company,
+			SourceURL:   url,
+			SourceBoard: "hnhiring",
+			Description: desc,
+			Location:    "Remote",
+			Country:     inferCountry(desc),
+			PostedAt:    postedAt,
+		}
+		NormalizeJob(job)
+		jobs = append(jobs, *job)
+	}
+
+	log.Printf("[Scraper] HNHiring: fetched %d jobs", len(jobs))
 	return jobs, nil
-}
-
-func extractHNJob(n *html.Node) *models.Job {
-	job := &models.Job{
-		SourceBoard: "hnhiring",
-		Location:    "Remote",
-		Country:     "Worldwide",
-		SourceURL:   "https://hnhiring.com/technologies/go",
-	}
-
-	var getText func(*html.Node) string
-	getText = func(n *html.Node) string {
-		if n.Type == html.TextNode {
-			return n.Data
-		}
-		var sb strings.Builder
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			sb.WriteString(getText(c))
-		}
-		return sb.String()
-	}
-
-	fullText := strings.TrimSpace(getText(n))
-	lines := strings.SplitN(fullText, "\n", 5)
-
-	if len(lines) >= 1 {
-		job.Company = strings.TrimSpace(lines[0])
-	}
-	if len(lines) >= 2 {
-		job.Title = strings.TrimSpace(lines[1])
-	}
-	if job.Title == "" {
-		job.Title = "Go Engineer"
-	}
-	if len(lines) >= 3 {
-		job.Description = strings.Join(lines[2:], " ")
-	}
-	if job.Description == "" {
-		job.Description = fullText
-	}
-
-	// Try to extract URL from anchor
-	var walkLinks func(*html.Node)
-	walkLinks = func(n *html.Node) {
-		if n.Type == html.ElementNode && n.Data == "a" {
-			for _, a := range n.Attr {
-				if a.Key == "href" && (strings.HasPrefix(a.Val, "http") || strings.HasPrefix(a.Val, "/")) {
-					if !strings.Contains(a.Val, "hnhiring.com") {
-						job.SourceURL = a.Val
-					}
-				}
-			}
-		}
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			walkLinks(c)
-		}
-	}
-	walkLinks(n)
-
-	if job.Company == "" {
-		return nil
-	}
-	return job
 }

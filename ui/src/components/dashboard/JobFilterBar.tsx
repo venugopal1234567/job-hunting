@@ -22,7 +22,7 @@ const SKILL_SUGGESTIONS = [
 const JobFilterBar: React.FC<JobFilterBarProps> = ({ onFilter, loading }) => {
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [skillInput, setSkillInput] = useState('');
-  const [days, setDays] = useState(1);
+  const [days, setDays] = useState(30);
   const [country, setCountry] = useState('');
 
   const addSkill = (skill: string) => {
@@ -71,11 +71,11 @@ const JobFilterBar: React.FC<JobFilterBarProps> = ({ onFilter, loading }) => {
   const clearAll = () => {
     setSelectedSkills([]);
     setCountry('');
-    setDays(1);
-    applyFilter([], 1, '');
+    setDays(30);
+    applyFilter([], 30, '');
   };
 
-  const hasFilters = selectedSkills.length > 0 || country || days !== 1;
+  const hasFilters = selectedSkills.length > 0 || country || days !== 30;
 
   return (
     <div className="glass rounded-xl p-4 mb-5 space-y-4">

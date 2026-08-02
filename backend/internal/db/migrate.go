@@ -82,18 +82,13 @@ CREATE TABLE IF NOT EXISTS scraper_configs (
 -- Seed default scraper targets
 INSERT INTO scraper_configs (board_name, target_url, enabled, cron_schedule)
 VALUES
-    -- ✅ Free JSON APIs — work reliably from Docker (no JS rendering needed)
-    ('Remotive', 'https://remotive.com/api/remote-jobs?search=golang&limit=50', true, '@every 1h'),
+    ('Remotive', 'https://remotive.com/api/remote-jobs?category=software-dev&limit=50', true, '@every 1h'),
     ('Arbeitnow', 'https://www.arbeitnow.com/api/job-board-api?remote=true&page=1', true, '@every 1h'),
-    -- ✅ RSS Feed — reliable XML endpoint
     ('WeWorkRemotely', 'https://weworkremotely.com/categories/remote-programming-jobs.rss', true, '@every 1h'),
-    -- ✅ Headless Chromium (chromedp) — scrapes JS-rendered BuiltIn SPA
-    ('BuiltIn Remote', 'https://builtin.com/jobs/remote/senior?search=Go&daysSinceUpdated=1&skills=Go%2CPython%2CAWS%2CDocker%2CGCP%2CTypescript%2CAzure%2CCi%2FCd%2CPostgres%2CRust%2CSQL%2CNode.js&country=IND&allLocations=true', true, '@every 2h'),
-    -- ℹ️ HTML scrapers — may return 0 jobs if site blocks bots or uses JS rendering
-    ('GolangProjects', 'https://www.golangprojects.com/golang-remote-jobs.html', true, '@every 2h'),
-    ('HNHiring', 'https://hnhiring.com/technologies/go', true, '@every 2h'),
-    -- ❌ JS-rendered SPA — no scraper implemented (requires headless browser)
-    ('WelcomeToTheJungle', 'https://app.welcometothejungle.com/', false, '@every 6h')
+    ('RemoteOK', 'https://remoteok.com/api', true, '@every 1h'),
+    ('GolangProjects', 'https://www.golangprojects.com/rss.xml', true, '@every 1h'),
+    ('HNHiring', 'https://hn.algolia.com/api/v1/search?query=golang+remote&tags=comment', true, '@every 1h'),
+    ('BuiltIn Remote', 'https://builtin.com/jobs/remote/senior?search=Go&daysSinceUpdated=3&skills=Go%2CPython%2CAWS%2CDocker%2CGCP%2CTypescript%2CAzure%2CCi%2FCd%2CPostgres%2CRust%2CSQL%2CNode.js&country=IND&allLocations=true', true, '@every 2h')
 ON CONFLICT (board_name) DO UPDATE SET target_url = EXCLUDED.target_url, enabled = EXCLUDED.enabled;
 
 

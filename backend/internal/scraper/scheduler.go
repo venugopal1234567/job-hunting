@@ -22,13 +22,14 @@ type Scheduler struct {
 // Keys must match the board_name values stored in scraper_configs (case-insensitive).
 func NewScheduler(db *sql.DB) *Scheduler {
 	scrapers := map[string]Scraper{
-		"golangprojects":  NewGolangProjectsScraper(),
-		"hnhiring":        NewHNHiringScraper(),
-		"weworkremotely":  NewWeWorkRemotelyScraper(),
-		"remotive":        NewRemotiveScraper(),
-		"arbeitnow":       NewArbeitnowScraper(),
-		"builtin":         NewBuiltInScraper(),
-		"builtinremote":   NewBuiltInScraper(),
+		"golangprojects": NewGolangProjectsScraper(),
+		"hnhiring":       NewHNHiringScraper(),
+		"weworkremotely": NewWeWorkRemotelyScraper(),
+		"remotive":       NewRemotiveScraper(),
+		"arbeitnow":      NewArbeitnowScraper(),
+		"remoteok":       NewRemoteOKScraper(),
+		"builtin":        NewBuiltInScraper(),
+		"builtinremote":  NewBuiltInScraper(),
 	}
 
 	return &Scheduler{
@@ -82,6 +83,7 @@ func (s *Scheduler) Stop() {
 
 // TriggerAll runs all enabled scrapers immediately
 func (s *Scheduler) TriggerAll() {
+	s.PurgeStaleJobs()
 	configs, err := s.loadConfigs()
 	if err != nil {
 		log.Printf("[Scheduler] TriggerAll: failed to load configs: %v", err)
@@ -95,8 +97,25 @@ func (s *Scheduler) TriggerAll() {
 	}
 }
 
+// PurgeStaleJobs deletes jobs older than 30 days from the database
+func (s *Scheduler) PurgeStaleJobs() {
+	cutoff := time.Now().AddDate(0, 0, -30)
+	res, err := s.db.Exec(`
+		DELETE FROM jobs 
+		WHERE (posted_at IS NOT NULL AND posted_at < $1)
+		   OR (posted_at IS NULL AND scraped_at < $1)
+	`, cutoff)
+	if err != nil {
+		log.Printf("[Scheduler] Error purging stale jobs: %v", err)
+	} else if rows, _ := res.RowsAffected(); rows > 0 {
+		log.Printf("[Scheduler] Purged %d stale jobs (>30 days old)", rows)
+	}
+}
+
 // RunScraper executes a named scraper and upserts results to the database
 func (s *Scheduler) RunScraper(boardName, targetURL string) {
+	s.PurgeStaleJobs()
+
 	key := normalizeKey(boardName)
 	sc, ok := s.scrapers[key]
 	if !ok {
@@ -127,19 +146,32 @@ func (s *Scheduler) RunScraper(boardName, targetURL string) {
 
 // upsertJob saves a job to the database, skipping if hash already exists
 func (s *Scheduler) upsertJob(job *models.Job) error {
-	cleanTitle := strings.ToValidUTF8(strings.ReplaceAll(job.Title, "\x00", ""), "")
-	cleanCompany := strings.ToValidUTF8(strings.ReplaceAll(job.Company, "\x00", ""), "")
+	cleanTitle := truncateStr(strings.ToValidUTF8(strings.ReplaceAll(job.Title, "\x00", ""), ""), 250)
+	cleanCompany := truncateStr(strings.ToValidUTF8(strings.ReplaceAll(job.Company, "\x00", ""), ""), 250)
 	cleanDesc := strings.ToValidUTF8(strings.ReplaceAll(job.Description, "\x00", ""), "")
+	cleanLocation := truncateStr(job.Location, 250)
+	cleanCountry := truncateStr(job.Country, 90)
+	cleanBoard := truncateStr(job.SourceBoard, 90)
 
 	_, err := s.db.Exec(`
 		INSERT INTO jobs (job_hash, title, company, location, country, source_url, source_board, description, salary_range, job_type, posted_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-		ON CONFLICT (job_hash) DO NOTHING`,
-		job.JobHash, cleanTitle, cleanCompany, job.Location, job.Country,
-		job.SourceURL, job.SourceBoard, cleanDesc, job.SalaryRange,
+		ON CONFLICT (job_hash) DO UPDATE SET
+			description = CASE WHEN LENGTH(EXCLUDED.description) > LENGTH(jobs.description) THEN EXCLUDED.description ELSE jobs.description END,
+			source_url = EXCLUDED.source_url,
+			posted_at = EXCLUDED.posted_at`,
+		job.JobHash, cleanTitle, cleanCompany, cleanLocation, cleanCountry,
+		job.SourceURL, cleanBoard, cleanDesc, job.SalaryRange,
 		job.JobType, job.PostedAt,
 	)
 	return err
+}
+
+func truncateStr(s string, maxLen int) string {
+	if len(s) > maxLen {
+		return s[:maxLen]
+	}
+	return s
 }
 
 // loadConfigs reads scraper configurations from database

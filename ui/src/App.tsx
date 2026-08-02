@@ -17,7 +17,7 @@ type ActiveTab = 'dashboard' | 'resume' | 'settings';
 function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
-  const [currentFilters, setCurrentFilters] = useState<JobFilterParams>({ days: 1, page: 1, limit: 20 });
+  const [currentFilters, setCurrentFilters] = useState<JobFilterParams>({ days: 30, page: 1, limit: 20 });
   const [apiHealthy, setApiHealthy] = useState(false);
 
   const { jobs, total, loading, error, refresh, triggerManualScrape, scraping } = useJobs(currentFilters);

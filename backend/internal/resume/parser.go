@@ -1,7 +1,9 @@
 package resume
 
 import (
+	"bytes"
 	"io"
+	"os/exec"
 	"strings"
 	"unicode"
 )
@@ -24,9 +26,18 @@ func ParseText(r io.Reader) (string, error) {
 	return cleanText(raw), nil
 }
 
-// extractTextFromPDF does a best-effort text extraction from raw PDF bytes
-// by filtering printable ASCII runs from the binary content
+// extractTextFromPDF uses pdftotext to extract clean text from raw PDF bytes
 func extractTextFromPDF(data []byte) string {
+	// Try pdftotext CLI first
+	cmd := exec.Command("pdftotext", "-", "-")
+	cmd.Stdin = bytes.NewReader(data)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err == nil && out.Len() > 0 {
+		return cleanText(out.String())
+	}
+
+	// Fallback to basic string extraction
 	var sb strings.Builder
 	var currentWord strings.Builder
 

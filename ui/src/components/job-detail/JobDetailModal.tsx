@@ -70,11 +70,11 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({ job, onClose }) => {
               href={job.source_url}
               target="_blank"
               rel="noreferrer"
-              className="btn-ghost flex items-center gap-1 text-xs"
+              className="btn-primary text-xs font-semibold px-3 py-1.5 flex items-center gap-1.5 shadow-md shadow-brand-500/20 hover:scale-105 transition-all"
               id="btn-open-job-link"
             >
+              Apply Now
               <ExternalLink className="w-3.5 h-3.5" />
-              Open
             </a>
             <button onClick={onClose} className="btn-ghost p-2" id="btn-close-job-modal">
               <X className="w-4 h-4" />
@@ -229,15 +229,92 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({ job, onClose }) => {
 
           {/* Job Description */}
           <div>
-            <p className="section-header">Job Description</p>
-            <div className="glass rounded-xl p-5">
-              <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">
-                {job.description}
-              </p>
+            <div className="flex items-center justify-between mb-3">
+              <p className="section-header mb-0">Job Description</p>
+              <a
+                href={job.source_url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-brand-400 hover:text-brand-300 font-medium flex items-center gap-1"
+              >
+                View original post on {job.source_board} <ExternalLink className="w-3 h-3" />
+              </a>
             </div>
+            <div className="glass rounded-xl p-5 border border-white/5">
+              {formatNeatDescription(job.description)}
+            </div>
+          </div>
+
+          {/* Bottom Apply Banner */}
+          <div className="bg-gradient-to-r from-brand-600/30 to-purple-600/30 border border-brand-500/30 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 mt-6">
+            <div>
+              <p className="text-xs text-brand-300 font-semibold uppercase tracking-wider">Ready to apply?</p>
+              <p className="text-sm font-bold text-white mt-0.5">{job.title} at {job.company}</p>
+            </div>
+            <a
+              href={job.source_url}
+              target="_blank"
+              rel="noreferrer"
+              className="btn-primary text-sm font-semibold px-5 py-2.5 flex items-center gap-2 shadow-lg shadow-brand-500/30 hover:scale-105 transition-all w-full sm:w-auto justify-center"
+            >
+              Apply on {job.source_board}
+              <ExternalLink className="w-4 h-4" />
+            </a>
           </div>
         </div>
       </div>
+    </div>
+  );
+};
+
+const formatNeatDescription = (desc: string) => {
+  if (!desc) return null;
+
+  // Clean anti-bot spam text & HTML entities
+  let cleaned = desc
+    .replace(/Please mention the word \*\*[^*]+\*\*[\s\S]*?they're human\./gi, '')
+    .replace(/Please mention the word [A-Z0-9_*-]+[\s\S]*?spam applicants\./gi, '')
+    .replace(/#RMTAz[A-Za-z0-9]+/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'");
+
+  const lines = cleaned.split(/\n+/).map(l => l.trim()).filter(Boolean);
+
+  return (
+    <div className="space-y-3 text-sm text-gray-300 leading-relaxed">
+      {lines.map((line, idx) => {
+        const isHeader = /^(Requirements|Responsibilities|About Us|About the Role|What You'll Do|Who You Are|Qualifications|Benefits|Tech Stack|Our Stack):?$/i.test(line) ||
+          (line.length < 50 && line.endsWith(':'));
+
+        const isBullet = line.startsWith('•') || line.startsWith('-') || line.startsWith('*');
+
+        if (isHeader) {
+          return (
+            <h4 key={idx} className="text-sm font-bold text-white mt-4 border-b border-white/10 pb-1 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-brand-400"></span>
+              {line.replace(/:$/, '')}
+            </h4>
+          );
+        }
+
+        if (isBullet) {
+          return (
+            <div key={idx} className="flex items-start gap-2.5 pl-2 text-xs sm:text-sm text-gray-300">
+              <span className="text-brand-400 mt-1 font-bold flex-shrink-0">•</span>
+              <span>{line.replace(/^[-•*]\s*/, '')}</span>
+            </div>
+          );
+        }
+
+        return (
+          <p key={idx} className="text-xs sm:text-sm text-gray-300 leading-relaxed">
+            {line}
+          </p>
+        );
+      })}
     </div>
   );
 };
