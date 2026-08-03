@@ -214,24 +214,7 @@ func enrichJobWithATS(db *sql.DB, job *models.Job, requestedSkills []string) {
 			job.MatchedSkills = mb.MatchedSkills
 			job.MissingSkills = mb.MissingSkills
 			job.ATSScore = &score
-			return
 		}
-	}
-
-	// Fallback: compute simple skill match from requested skills
-	if len(requestedSkills) > 0 {
-		matched := []string{}
-		missing := []string{}
-		descLower := strings.ToLower(job.Description + " " + job.Title)
-		for _, sk := range requestedSkills {
-			if strings.Contains(descLower, strings.ToLower(sk)) {
-				matched = append(matched, sk)
-			} else {
-				missing = append(missing, sk)
-			}
-		}
-		job.MatchedSkills = matched
-		job.MissingSkills = missing
 	}
 }
 

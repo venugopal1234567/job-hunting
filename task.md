@@ -27,7 +27,7 @@
 - [x] src/types/index.ts
 - [x] src/services/api.ts
 - [x] src/hooks/useJobs.ts
-- [x] src/hooks/useResume.ts
+- [x] [/] src/hooks/useResume.ts
 - [x] src/hooks/useAtsAnalysis.ts
 - [x] src/components/layout/Navbar.tsx
 - [x] src/components/dashboard/StatsOverview.tsx

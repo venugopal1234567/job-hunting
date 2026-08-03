@@ -2,9 +2,9 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   Download, Save, Upload, Clock, PanelRight, PanelRightClose,
   FileText, AlertCircle, Loader2, CheckCircle2, GitBranch,
-  Sparkles, Cpu, Zap
+  Sparkles, Cpu, Zap, ThumbsUp, ThumbsDown, CornerDownLeft, Check, X
 } from 'lucide-react';
-import { Job, ResumeVersion } from '../../types';
+import { Job, ResumeVersion, TrackedChange } from '../../types';
 import { getResumeFullText, getActiveResume, analyzeJob, getResumeVersions, getVersionText, uploadResume } from '../../services/api';
 import { useResumeEditor } from '../../hooks/useResumeEditor';
 import ChatPanel from './ChatPanel';
@@ -346,6 +346,46 @@ const formatResumeTextToHTML = (text: string): string => {
   return htmlLines.join('\n');
 };
 
+const applyPendingChangesToText = (text: string, pendingChanges: TrackedChange[]): string => {
+  let result = text;
+  pendingChanges.forEach(change => {
+    if (change.status !== 'pending') return;
+    const originalClean = change.original.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
+    const idx = result.indexOf(originalClean);
+    if (idx !== -1) {
+      const delTag = `<del class="bg-rose-500/10 text-rose-600 line-through decoration-rose-500 cursor-pointer px-0.5 rounded select-all font-medium inline" data-edit-id="${change.id}">${originalClean}</del>`;
+      const insTag = `<ins class="bg-emerald-500/10 text-emerald-600 no-underline cursor-pointer border-b border-dashed border-emerald-500 px-0.5 rounded font-medium inline" data-edit-id="${change.id}">${change.replacement}</ins>`;
+      result = result.slice(0, idx) + delTag + insTag + result.slice(idx + originalClean.length);
+    }
+  });
+  return result;
+};
+
+const getCleanTextFromDOM = (node: Node): string => {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return node.nodeValue || '';
+  }
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    const el = node as HTMLElement;
+    if (el.tagName === 'DEL') {
+      return '';
+    }
+    if (el.tagName === 'BR') {
+      return '\n';
+    }
+    let text = '';
+    for (let i = 0; i < el.childNodes.length; i++) {
+      text += getCleanTextFromDOM(el.childNodes[i]);
+    }
+    const isBlock = ['P', 'DIV', 'H1', 'H2', 'H3', 'LI'].includes(el.tagName);
+    if (isBlock && !text.endsWith('\n')) {
+      text += '\n';
+    }
+    return text;
+  }
+  return '';
+};
+
 interface ResumeEditorProps {
   selectedJob?: Job | null;
 }
@@ -384,6 +424,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
   const [saveMessage, setSaveMessage] = useState('');
   const [activeSubTab, setActiveSubTab] = useState<'editor' | 'pdf'>('editor');
   const [hasPDF, setHasPDF] = useState(false);
+  const [selectedEditId, setSelectedEditId] = useState<string | null>(null);
+  const [cardPosition, setCardPosition] = useState<{ x: number, y: number } | null>(null);
+  const [refineInput, setRefineInput] = useState('');
   
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -760,19 +803,55 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
             </div>
 
             {/* Printable area */}
-            <div className={`flex-1 overflow-auto print-area bg-[#141416] p-8 ${activeSubTab === 'pdf' ? 'flex flex-col' : 'items-start'}`}>
+            <div 
+              className={`flex-1 overflow-auto print-area bg-[#141416] p-8 ${activeSubTab === 'pdf' ? 'flex flex-col' : 'items-start'} relative`}
+              onClick={(e) => {
+                // Clicking outside the canvas or edits should dismiss the card
+                const target = e.target as HTMLElement;
+                if (!target.closest('[data-edit-id]')) {
+                  setSelectedEditId(null);
+                  setCardPosition(null);
+                }
+              }}
+            >
               {activeSubTab === 'editor' ? (
                 <div 
                   id="resume-editor-canvas"
                   contentEditable
                   suppressContentEditableWarning
+                  onClick={(e) => {
+                    const target = e.target as HTMLElement;
+                    const editEl = target.closest('[data-edit-id]');
+                    if (editEl) {
+                      const editId = editEl.getAttribute('data-edit-id');
+                      if (editId) {
+                        const rect = editEl.getBoundingClientRect();
+                        const canvasEl = document.getElementById('resume-editor-canvas');
+                        if (canvasEl) {
+                          const parentEl = canvasEl.parentElement;
+                          if (parentEl) {
+                            const parentRect = parentEl.getBoundingClientRect();
+                            setCardPosition({
+                              x: rect.left - parentRect.left + (rect.width / 2),
+                              y: rect.bottom - parentRect.top + parentEl.scrollTop + 8
+                            });
+                            setSelectedEditId(editId);
+                            setRefineInput('');
+                            return;
+                          }
+                        }
+                      }
+                    }
+                  }}
                   onBlur={(e) => {
-                    const newText = e.currentTarget.innerText;
+                    const newText = getCleanTextFromDOM(e.currentTarget);
                     if (newText !== editorContent) {
                       updateContent(newText);
                     }
                   }}
-                  dangerouslySetInnerHTML={{ __html: formatResumeTextToHTML(editorContent) }}
+                  dangerouslySetInnerHTML={{ 
+                    __html: formatResumeTextToHTML(applyPendingChangesToText(editorContent, pendingChanges)) 
+                  }}
                   className="editor-textarea bg-white text-slate-800 shadow-2xl rounded-sm mx-auto flex-shrink-0"
                   style={{
                     width: '8.5in',
@@ -812,6 +891,125 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
                   )}
                 </div>
               )}
+
+              {/* Floating Google-Docs-Style Suggestion Card */}
+              {selectedEditId && cardPosition && (
+                (() => {
+                  const edit = pendingChanges.find(c => c.id === selectedEditId);
+                  if (!edit) return null;
+
+                  return (
+                    <div
+                      className="absolute z-50 w-80 glass rounded-xl border border-white/10 shadow-2xl p-4 flex flex-col gap-3 animate-fade-in bg-surface-200/95 backdrop-blur-md"
+                      style={{
+                        left: `${cardPosition.x}px`,
+                        top: `${cardPosition.y}px`,
+                        transform: 'translateX(-50%)',
+                      }}
+                      onClick={(e) => e.stopPropagation()} // Prevent closing when clicking card itself
+                    >
+                      {/* Top Action Row */}
+                      <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                        <div className="flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-brand-400" />
+                          <span className="text-xs font-semibold text-white">Gemini Suggestion</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              // Visual thumbs up feedback (no-op or toast)
+                            }}
+                            className="p-1 hover:bg-white/5 rounded text-gray-400 hover:text-white transition-all"
+                            title="Helpful"
+                          >
+                            <ThumbsUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              // Visual thumbs down feedback
+                            }}
+                            className="p-1 hover:bg-white/5 rounded text-gray-400 hover:text-white transition-all"
+                            title="Not helpful"
+                          >
+                            <ThumbsDown className="w-3.5 h-3.5" />
+                          </button>
+                          <div className="w-px h-3 bg-white/10" />
+                          <button
+                            onClick={() => {
+                              rejectChange(selectedEditId);
+                              setSelectedEditId(null);
+                              setCardPosition(null);
+                            }}
+                            className="p-1 hover:bg-red-500/10 rounded text-red-400 hover:text-red-300 transition-all"
+                            title="Reject suggestion"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              acceptChange(selectedEditId);
+                              setSelectedEditId(null);
+                              setCardPosition(null);
+                            }}
+                            className="p-1 hover:bg-emerald-500/10 rounded text-emerald-400 hover:text-emerald-300 transition-all"
+                            title="Accept suggestion"
+                          >
+                            <Check className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Explanation */}
+                      <div className="space-y-2">
+                        {edit.reason && (
+                          <p className="text-xs text-gray-300 leading-relaxed font-normal">
+                            {edit.reason}
+                          </p>
+                        )}
+                        <div className="bg-brand-500/5 border border-brand-500/10 rounded-lg p-2 text-[11px] text-brand-300 font-mono select-all">
+                          {edit.replacement}
+                        </div>
+                      </div>
+
+                      {/* Refinement input */}
+                      <div className="relative flex items-center mt-1 border border-white/10 rounded-lg bg-surface-300/50 focus-within:border-brand-500/50 transition-all">
+                        <input
+                          type="text"
+                          value={refineInput}
+                          onChange={(e) => setRefineInput(e.target.value)}
+                          placeholder="Refine suggestion with Gemini..."
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && refineInput.trim()) {
+                              // Send refinement message
+                              const msg = `Regarding the suggestion to replace "${edit.original}" with "${edit.replacement}": ${refineInput.trim()}`;
+                              sendMessage(msg);
+                              setRefineInput('');
+                              setSelectedEditId(null);
+                              setCardPosition(null);
+                            }
+                          }}
+                          className="w-full bg-transparent text-xs py-2 pl-3 pr-8 text-white outline-none placeholder:text-gray-500"
+                        />
+                        <button
+                          onClick={() => {
+                            if (refineInput.trim()) {
+                              const msg = `Regarding the suggestion to replace "${edit.original}" with "${edit.replacement}": ${refineInput.trim()}`;
+                              sendMessage(msg);
+                              setRefineInput('');
+                              setSelectedEditId(null);
+                              setCardPosition(null);
+                            }
+                          }}
+                          disabled={!refineInput.trim()}
+                          className="absolute right-2 p-1 text-gray-400 hover:text-white disabled:opacity-30 disabled:hover:text-gray-400 transition-all"
+                        >
+                          <CornerDownLeft className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()
+              )}
             </div>
           </div>
 
@@ -841,6 +1039,29 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
               onReject={rejectChange}
               onAnswerGap={answerGapQuestion}
               jobTitle={selectedJob?.title}
+              onSelectEdit={(id) => {
+                // Find the edit element in visual editor and trigger the card
+                setTimeout(() => {
+                  const editEl = document.querySelector(`[data-edit-id="${id}"]`);
+                  if (editEl) {
+                    editEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    const rect = editEl.getBoundingClientRect();
+                    const canvasEl = document.getElementById('resume-editor-canvas');
+                    if (canvasEl) {
+                      const parentEl = canvasEl.parentElement;
+                      if (parentEl) {
+                        const parentRect = parentEl.getBoundingClientRect();
+                        setCardPosition({
+                          x: rect.left - parentRect.left + (rect.width / 2),
+                          y: rect.bottom - parentRect.top + parentEl.scrollTop + 8
+                        });
+                        setSelectedEditId(id);
+                        setRefineInput('');
+                      }
+                    }
+                  }
+                }, 100);
+              }}
             />
           </div>
         )}
