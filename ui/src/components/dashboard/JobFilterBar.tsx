@@ -272,6 +272,7 @@ const JobFilterBar: React.FC<JobFilterBarProps> = ({ onFilter, loading }) => {
               { label: 'GolangProj', value: 'golangprojects' },
               { label: 'HNHiring', value: 'hnhiring' },
               { label: 'GoogleJobs', value: 'googlejobs' },
+              { label: 'RemoteRocket', value: 'remoterocketship' },
             ].map(src => (
               <button
                 key={src.value}
