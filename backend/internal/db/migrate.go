@@ -107,7 +107,8 @@ VALUES
     ('GolangProjects', 'https://www.golangprojects.com/rss.xml', true, '@every 1h'),
     ('HNHiring', 'https://hn.algolia.com/api/v1/search?query=golang+remote&tags=comment', true, '@every 1h'),
     ('BuiltIn Remote', 'https://builtin.com/jobs/remote/senior?search=Go&daysSinceUpdated=7&skills=Go%2CPython%2CAWS%2CDocker%2CGCP%2CTypescript%2CAzure%2CCi%2FCd%2CPostgres%2CRust%2CSQL%2CNode.js&country=IND&allLocations=true', true, '@every 2h'),
-    ('FlexBoard', 'https://flexboard.9y.liveblog365.com/?search=golang', true, '@every 1h')
+    ('FlexBoard', 'https://flexboard.9y.liveblog365.com/?search=golang', true, '@every 1h'),
+    ('VacancyGlobalPro', 'https://vacancyglobalpro.up.railway.app/remote-golang-jobs', true, '@every 1h')
 ON CONFLICT (board_name) DO NOTHING;
 
 

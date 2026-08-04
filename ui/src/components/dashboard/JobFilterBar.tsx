@@ -264,6 +264,7 @@ const JobFilterBar: React.FC<JobFilterBarProps> = ({ onFilter, loading }) => {
             {[
               { label: 'FlexBoard', value: 'flexboard' },
               { label: 'BuiltIn', value: 'builtin' },
+              { label: 'VacancyPro', value: 'vacancyglobalpro' },
               { label: 'RemoteOK', value: 'remoteok' },
               { label: 'WWR', value: 'weworkremotely' },
               { label: 'Remotive', value: 'remotive' },

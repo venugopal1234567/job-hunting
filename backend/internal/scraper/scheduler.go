@@ -22,15 +22,16 @@ type Scheduler struct {
 // Keys must match the board_name values stored in scraper_configs (case-insensitive).
 func NewScheduler(db *sql.DB) *Scheduler {
 	scrapers := map[string]Scraper{
-		"golangprojects": NewGolangProjectsScraper(),
-		"hnhiring":       NewHNHiringScraper(),
-		"weworkremotely": NewWeWorkRemotelyScraper(),
-		"remotive":       NewRemotiveScraper(),
-		"arbeitnow":      NewArbeitnowScraper(),
-		"remoteok":       NewRemoteOKScraper(),
-		"builtin":        NewBuiltInScraper(),
-		"builtinremote":  NewBuiltInScraper(),
-		"flexboard":      NewFlexboardScraper(),
+		"golangprojects":   NewGolangProjectsScraper(),
+		"hnhiring":         NewHNHiringScraper(),
+		"weworkremotely":   NewWeWorkRemotelyScraper(),
+		"remotive":         NewRemotiveScraper(),
+		"arbeitnow":        NewArbeitnowScraper(),
+		"remoteok":         NewRemoteOKScraper(),
+		"builtin":          NewBuiltInScraper(),
+		"builtinremote":    NewBuiltInScraper(),
+		"flexboard":        NewFlexboardScraper(),
+		"vacancyglobalpro": NewVacancyGlobalProScraper(),
 	}
 
 	return &Scheduler{
@@ -134,6 +135,14 @@ func (s *Scheduler) RunScraper(boardName, targetURL string) {
 
 	saved := 0
 	for _, job := range jobs {
+		// Filter out US / USA jobs as requested by the user
+		c := strings.ToLower(job.Country)
+		l := strings.ToLower(job.Location)
+		if c == "us" || c == "usa" || strings.Contains(c, "united states") || strings.Contains(c, "us only") ||
+			l == "us" || l == "usa" || strings.Contains(l, "united states") || strings.Contains(l, "us only") {
+			continue
+		}
+
 		if err := s.upsertJob(&job); err != nil {
 			log.Printf("[Scheduler] Failed to save job '%s': %v", job.Title, err)
 		} else {
