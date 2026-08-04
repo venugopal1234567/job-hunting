@@ -73,7 +73,6 @@ CREATE TABLE IF NOT EXISTS resume_versions (
 
 CREATE INDEX IF NOT EXISTS idx_resume_versions_resume ON resume_versions(resume_id);
 CREATE INDEX IF NOT EXISTS idx_resume_versions_job ON resume_versions(job_id);
-
 -- 5. ATS Analysis Reports Table
 CREATE TABLE IF NOT EXISTS ats_analyses (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -103,14 +102,13 @@ VALUES
     ('Remotive', 'https://remotive.com/api/remote-jobs?category=software-dev&limit=50', true, '@every 1h'),
     ('Arbeitnow', 'https://www.arbeitnow.com/api/job-board-api?remote=true&page=1', true, '@every 1h'),
     ('WeWorkRemotely', 'https://weworkremotely.com/categories/remote-programming-jobs.rss', true, '@every 1h'),
-    ('RemoteOK', 'https://remoteok.com/api', true, '@every 1h'),
+    ('RemoteOK', 'https://remoteok.com/api?tag=golang', true, '@every 1h'),
     ('GolangProjects', 'https://www.golangprojects.com/rss.xml', true, '@every 1h'),
     ('HNHiring', 'https://hn.algolia.com/api/v1/search?query=golang+remote&tags=comment', true, '@every 1h'),
     ('BuiltIn Remote', 'https://builtin.com/jobs/remote/senior?search=Go&daysSinceUpdated=7&skills=Go%2CPython%2CAWS%2CDocker%2CGCP%2CTypescript%2CAzure%2CCi%2FCd%2CPostgres%2CRust%2CSQL%2CNode.js&country=IND&allLocations=true', true, '@every 2h'),
     ('FlexBoard', 'https://flexboard.9y.liveblog365.com/?search=golang', true, '@every 1h'),
     ('VacancyGlobalPro', 'https://vacancyglobalpro.up.railway.app/remote-golang-jobs', true, '@every 1h')
 ON CONFLICT (board_name) DO NOTHING;
-
 
 -- 7. App Settings Table (key-value for runtime configuration)
 CREATE TABLE IF NOT EXISTS app_settings (

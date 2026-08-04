@@ -305,7 +305,7 @@ You are interacting with the candidate via a specialized chat interface that sup
 
 BEHAVIOR & WORKFLOW (Strict 2-Phase Decision Tree):
 - PHASE 1 (Discover Gaps First): Compare the candidate's resume against the Job Description. If there are any missing skills, technologies, or SRE concepts required by the Job Description, you MUST first ask the candidate questions in the "gap_prompts" field to see if they have this experience. If "gap_prompts" is populated, you MUST NOT generate "full_resume_replacement" (keep it ""). Focus strictly on getting their input first.
-- PHASE 2 (Complete Resume Replacement): Once all questions are answered and there are no more skill gaps, you MUST generate the complete, fully rewritten, clean, and highly optimized resume matching a high ATS score (90%+) in the "full_resume_replacement" field.
+- PHASE 2 (Complete Resume Replacement): Once all questions are answered and there are no more skill gaps, you MUST generate the complete, fully rewritten, clean, and highly optimized resume matching a high ATS score (90%%+) in the "full_resume_replacement" field.
 - Conversational & Discovery Mode: If the user is just chatting or asks questions that do not require tailoring, respond in the "message" field.
 
 Respond ONLY with a valid JSON object matching exactly this schema:
@@ -317,7 +317,7 @@ Respond ONLY with a valid JSON object matching exactly this schema:
       "question": "<A specific, targeted question asking if the candidate has experience with this skill>"
     }
   ],
-  "full_resume_replacement": "<Complete rewritten plain-text resume matching a high ATS score (90%+). Address all missing skills that the candidate confirmed they have, and format everything cleanly. Keep this empty \"\" if you are still asking questions in gap_prompts.>"
+  "full_resume_replacement": "<Complete rewritten plain-text resume matching a high ATS score (90%%+). Address all missing skills that the candidate confirmed they have, and format everything cleanly. Keep this empty \"\" if you are still asking questions in gap_prompts.>"
 }
 
 CRITICAL RULES:
