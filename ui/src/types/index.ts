@@ -99,6 +99,7 @@ export interface ChatMessage {
   content: string;
   proposedEdits?: ProposedEdit[];
   gapPrompts?: GapQuestionPrompt[];
+  fullResumeReplacement?: string;
   timestamp: number;
 }
 

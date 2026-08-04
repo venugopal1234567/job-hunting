@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { ChatMessage, TrackedChange, ProposedEdit, GapQuestionPrompt } from '../types';
-import { chatWithResume, saveResumeText, saveResumeVersion } from '../services/api';
+import { chatWithResume, saveResumeText, saveResumeVersion, revertResumeText } from '../services/api';
 
 let msgCounter = 0;
 const mkId = () => `msg_${++msgCounter}_${Date.now()}`;
@@ -28,7 +28,7 @@ export const useResumeEditor = (jobId?: string) => {
   }, []);
 
   // Send a chat message to the AI
-  const sendMessage = useCallback(async (userText: string) => {
+  const sendMessage = useCallback(async (userText: string, model?: string) => {
     if (!userText.trim() || isChatLoading) return;
 
     const userMsg: ChatMessage = {
@@ -37,11 +37,13 @@ export const useResumeEditor = (jobId?: string) => {
       content: userText,
       timestamp: Date.now(),
     };
-    setChatMessages(prev => [...prev, userMsg]);
+    // Reset chat session and clear previous suggestions to start fresh
+    setChatMessages([userMsg]);
+    setTrackedChanges([]);
     setIsChatLoading(true);
 
     try {
-      const response = await chatWithResume(userText, editorContent, jobId);
+      const response = await chatWithResume(userText, editorContent, jobId, model);
 
       // Map proposed edits → tracked changes
       const newChanges: TrackedChange[] = (response.proposed_edits || []).map((edit: ProposedEdit) => ({
@@ -63,6 +65,7 @@ export const useResumeEditor = (jobId?: string) => {
         content: response.message,
         proposedEdits: response.proposed_edits?.map((e: ProposedEdit) => ({ ...e })),
         gapPrompts: response.gap_prompts?.map((g: GapQuestionPrompt) => ({ ...g })),
+        fullResumeReplacement: response.full_resume_replacement,
         timestamp: Date.now(),
       };
       setChatMessages(prev => [...prev, aiMsg]);
@@ -89,43 +92,110 @@ export const useResumeEditor = (jobId?: string) => {
     sendMessage(text);
   }, [sendMessage]);
 
+interface MatchResult {
+  start: number;
+  end: number;
+}
+
+const expandToWordBoundaries = (text: string, start: number, end: number): MatchResult => {
+  let newStart = start;
+  let newEnd = end;
+  const isWordChar = (char: string) => /[a-zA-Z0-9_]/.test(char);
+
+  if (start > 0 && isWordChar(text[start]) && isWordChar(text[start - 1])) {
+    while (newStart > 0 && isWordChar(text[newStart - 1])) {
+      newStart--;
+    }
+  }
+
+  if (end < text.length && isWordChar(text[end - 1]) && isWordChar(text[end])) {
+    while (newEnd < text.length && isWordChar(text[newEnd])) {
+      newEnd++;
+    }
+  }
+
+  return { start: newStart, end: newEnd };
+};
+
+const findFlexibleMatch = (text: string, pattern: string): MatchResult | null => {
+  const normalize = (str: string) => str.replace(/[\s\u200b\u200c\u200d\ufeff]+/g, ' ').trim().toLowerCase();
+  
+  const cleanText = text.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
+  const normPattern = normalize(pattern);
+  if (!normPattern) return null;
+
+  const stripPrefix = (str: string) => str.replace(/^[•\-\*\s]+/, '').trim();
+  const normPatternClean = stripPrefix(normPattern);
+  if (!normPatternClean) return null;
+
+  const words = normPatternClean.split(' ').filter(w => w !== '').map(w => w.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'));
+  if (words.length === 0) return null;
+
+  try {
+    const regexStr = '[•\\-\\*\\s]*' + words.join('[\\s\\r\\n\\W]*');
+    const regex = new RegExp(regexStr, 'i');
+    const match = cleanText.match(regex);
+    if (match && match.index !== undefined) {
+      return expandToWordBoundaries(cleanText, match.index, match.index + match[0].length);
+    }
+  } catch (e) {
+    // Ignore regex errors
+  }
+
+  const cleanPattern = pattern.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
+  const idx = cleanText.indexOf(cleanPattern);
+  if (idx !== -1) {
+    return expandToWordBoundaries(cleanText, idx, idx + cleanPattern.length);
+  }
+
+  const cleanPatternNoPunct = cleanPattern.trim().replace(/[;,.:\s]+$/, '');
+  const idx2 = cleanText.indexOf(cleanPatternNoPunct);
+  if (idx2 !== -1) {
+    return expandToWordBoundaries(cleanText, idx2, idx2 + cleanPatternNoPunct.length);
+  }
+
+  return null;
+};
+
   // Accept a tracked change: apply it to editor content
   const acceptChange = useCallback((changeId: string) => {
-    setTrackedChanges(prev => prev.map(c => {
-      if (c.id !== changeId) return c;
-      
-      const originalClean = c.original.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
-      const replacementClean = c.replacement.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
+    setTrackedChanges(prev => {
+      const targetChange = prev.find(c => c.id === changeId);
+      if (!targetChange || targetChange.status !== 'pending') return prev;
 
-      // Apply the replacement in the editor content with robust match options
+      const targetMatch = findFlexibleMatch(editorContent, targetChange.original);
+      if (!targetMatch) {
+        console.warn(`[AI Editor] Could not apply change. Original text not found: "${targetChange.original}"`);
+        return prev;
+      }
+
+      // Apply the replacement in the editor content
       setEditorContent(current => {
-        const cleanCurrent = current.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
-
-        // Try exact match first
-        let idx = cleanCurrent.indexOf(originalClean);
-        if (idx !== -1) {
-          return cleanCurrent.slice(0, idx) + replacementClean + cleanCurrent.slice(idx + originalClean.length);
-        }
-
-        // Try stripping trailing punctuation/spacing
-        const originalNoPunct = originalClean.trim().replace(/[;,.:\s]+$/, '');
-        idx = cleanCurrent.indexOf(originalNoPunct);
-        if (idx !== -1) {
-          let matchLength = originalNoPunct.length;
-          const nextChar = cleanCurrent[idx + matchLength];
-          if (nextChar && /[;,.:\s]/.test(nextChar)) {
-            matchLength++;
-          }
-          return cleanCurrent.slice(0, idx) + replacementClean + cleanCurrent.slice(idx + matchLength);
-        }
-
-        console.warn(`[AI Editor] Could not apply change. Original text not found: "${c.original}"`);
-        return current;
+        const replacementClean = targetChange.replacement.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
+        return current.slice(0, targetMatch.start) + replacementClean + current.slice(targetMatch.end);
       });
+
       setIsDirty(true);
-      return { ...c, status: 'accepted' };
-    }));
-  }, []);
+
+      // Return updated trackedChanges: mark target as accepted, and reject any overlapping edits in the OLD content
+      return prev.map(c => {
+        if (c.id === changeId) {
+          return { ...c, status: 'accepted' as const };
+        }
+        if (c.status === 'pending') {
+          const otherMatch = findFlexibleMatch(editorContent, c.original);
+          if (otherMatch) {
+            const overlap = targetMatch.start < otherMatch.end && otherMatch.start < targetMatch.end;
+            if (overlap) {
+              console.warn(`[AI Editor] Discarding overlapping pending change: "${c.original}"`);
+              return { ...c, status: 'rejected' as const };
+            }
+          }
+        }
+        return c;
+      });
+    });
+  }, [editorContent]);
 
   // Reject a tracked change
   const rejectChange = useCallback((changeId: string) => {
@@ -135,11 +205,12 @@ export const useResumeEditor = (jobId?: string) => {
   }, []);
 
   // Auto-save editor content to backend
-  const saveContent = useCallback(async () => {
-    if (!editorContent.trim() || isSaving) return null;
+  const saveContent = useCallback(async (textOverride?: string) => {
+    const textToSave = textOverride !== undefined ? textOverride : editorContent;
+    if (!textToSave.trim() || isSaving) return null;
     setIsSaving(true);
     try {
-      const result = await saveResumeText(editorContent);
+      const result = await saveResumeText(textToSave);
       setLastSavedSkills(result.skills);
       setIsDirty(false);
       return result;
@@ -167,6 +238,33 @@ export const useResumeEditor = (jobId?: string) => {
     });
   }, [editorContent, saveContent]);
 
+  // Revert edited text back to original
+  const revertContent = useCallback(async () => {
+    setIsSaving(true);
+    try {
+      const result = await revertResumeText();
+      setEditorContent(result.text);
+      setLastSavedSkills(result.skills);
+      setTrackedChanges([]); // Clear pending changes on revert
+      setIsDirty(false);
+      return result;
+    } catch (err) {
+      console.error('Revert failed:', err);
+      return null;
+    } finally {
+      setIsSaving(false);
+    }
+  }, []);
+
+  // Apply complete resume replacement
+  const applyFullResume = useCallback((text: string) => {
+    if (!text) return;
+    const cleanText = text.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
+    setEditorContent(cleanText);
+    setTrackedChanges([]); // Clear any line-by-line diffs since it's a full replacement
+    setIsDirty(true);
+  }, []);
+
   const pendingChanges = trackedChanges.filter(c => c.status === 'pending');
 
   return {
@@ -187,6 +285,8 @@ export const useResumeEditor = (jobId?: string) => {
     rejectChange,
     saveContent,
     saveAsApplied,
+    revertContent,
     setChatMessages,
+    applyFullResume,
   };
 };

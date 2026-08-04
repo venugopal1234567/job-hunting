@@ -40,7 +40,7 @@ func TestAnalyzeATSMatchIntegration(t *testing.T) {
 		RawText:         "Venugopal Hegde. Software Engineering Senior Engineer. Skills: Go, Docker, Python.",
 	}
 
-	analysis1, err := client.AnalyzeATSMatch(job, resume1)
+	analysis1, err := client.AnalyzeATSMatch(job, resume1, "")
 	if err != nil {
 		t.Fatalf("AnalyzeATSMatch failed: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestAnalyzeATSMatchIntegration(t *testing.T) {
 	t.Logf("[Integration] Run 1 Score: %d", analysis1.ATSScore)
 
 	// 2. Repeat to verify consistency (determinism at temperature 0.0)
-	analysis1Repeat, err := client.AnalyzeATSMatch(job, resume1)
+	analysis1Repeat, err := client.AnalyzeATSMatch(job, resume1, "")
 	if err != nil {
 		t.Fatalf("Repeat AnalyzeATSMatch failed: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestAnalyzeATSMatchIntegration(t *testing.T) {
 		RawText:         "Venugopal Hegde. Software Engineering Senior Engineer. Skills: Go, Docker, PostgreSQL, Kubernetes, Python.",
 	}
 
-	analysis2, err := client.AnalyzeATSMatch(job, resume2)
+	analysis2, err := client.AnalyzeATSMatch(job, resume2, "")
 	if err != nil {
 		t.Fatalf("AnalyzeATSMatch with edited resume failed: %v", err)
 	}

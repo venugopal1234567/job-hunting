@@ -32,6 +32,16 @@ func NewHandler(db *sql.DB, aiClient *ai.Client, scheduler *scraper.Scheduler) *
 	return &Handler{db: db, aiClient: aiClient, scheduler: scheduler}
 }
 
+// getActiveModel reads the current AI model from app_settings, falling back to the client default
+func (h *Handler) getActiveModel() string {
+	var value string
+	err := h.db.QueryRow(`SELECT value FROM app_settings WHERE key = 'active_model'`).Scan(&value)
+	if err != nil || value == "" {
+		return h.aiClient.DefaultModel()
+	}
+	return value
+}
+
 // ─────────────────────────────────────────────────────
 // GET /jobs
 // ─────────────────────────────────────────────────────
@@ -451,8 +461,9 @@ func (h *Handler) AnalyzeJob(c *gin.Context) {
 		}
 	}
 
-	// Run AI analysis
-	analysis, err := h.aiClient.AnalyzeATSMatch(&job, &res)
+	// Run AI analysis using the persisted active model
+	activeModel := h.getActiveModel()
+	analysis, err := h.aiClient.AnalyzeATSMatch(&job, &res, activeModel)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "analysis failed"})
 		return
@@ -636,6 +647,39 @@ func (h *Handler) UpdateResumeText(c *gin.Context) {
 }
 
 // ─────────────────────────────────────────────────────
+// POST /resume/revert  — revert edited text to original
+// ─────────────────────────────────────────────────────
+
+func (h *Handler) RevertResumeText(c *gin.Context) {
+	var id, rawText string
+	err := h.db.QueryRow(`
+		SELECT id, raw_text FROM resumes WHERE is_active = TRUE ORDER BY uploaded_at DESC LIMIT 1
+	`).Scan(&id, &rawText)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no active resume"})
+		return
+	}
+
+	skills := resume.ExtractSkills(rawText)
+	skillsJSON, _ := json.Marshal(skills)
+
+	_, err = h.db.Exec(`
+		UPDATE resumes SET edited_text = NULL, extracted_skills = $1
+		WHERE id = $2`, string(skillsJSON), id)
+	if err != nil {
+		log.Printf("[Handler] RevertResumeText error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to revert"})
+		return
+	}
+
+	// Invalidate cached ATS analyses for this resume so they re-run
+	h.db.Exec(`DELETE FROM ats_analyses WHERE resume_id = $1`, id)
+
+	c.JSON(http.StatusOK, gin.H{"id": id, "text": rawText, "skills": skills, "message": "reverted"})
+}
+
+
+// ─────────────────────────────────────────────────────
 // POST /resume/chat  — AI resume editor chat
 // ─────────────────────────────────────────────────────
 
@@ -657,7 +701,12 @@ func (h *Handler) ChatResume(c *gin.Context) {
 		}
 	}
 
-	response, err := h.aiClient.ChatWithResume(&req, jobContext)
+	// Resolve model: per-request override > DB active model > client default
+	modelOverride := req.Model
+	if modelOverride == "" {
+		modelOverride = h.getActiveModel()
+	}
+	response, err := h.aiClient.ChatWithResume(&req, jobContext, modelOverride)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "chat failed"})
 		return
@@ -775,3 +824,66 @@ func (h *Handler) GetVersionText(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"text": text})
 }
+
+// ─────────────────────────────────────────────────────
+// GET /ai/models  — list locally available Ollama models
+// ─────────────────────────────────────────────────────
+
+func (h *Handler) GetAIModels(c *gin.Context) {
+	availableModels, err := h.aiClient.ListModels()
+	if err != nil {
+		log.Printf("[Handler] GetAIModels error: %v", err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "failed to reach Ollama: " + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"models": availableModels})
+}
+
+// ─────────────────────────────────────────────────────
+// GET /settings/ai  — get current AI model configuration
+// ─────────────────────────────────────────────────────
+
+func (h *Handler) GetAISettings(c *gin.Context) {
+	activeModel := h.getActiveModel()
+
+	// Try to list available models (non-fatal if Ollama is down)
+	availableModels, _ := h.aiClient.ListModels()
+
+	c.JSON(http.StatusOK, models.AISettings{
+		ActiveModel:     activeModel,
+		DefaultModel:    h.aiClient.DefaultModel(),
+		AvailableModels: availableModels,
+	})
+}
+
+// ─────────────────────────────────────────────────────
+// PUT /settings/ai  — update active AI model
+// ─────────────────────────────────────────────────────
+
+func (h *Handler) UpdateAISettings(c *gin.Context) {
+	var body struct {
+		ActiveModel string `json:"active_model"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || body.ActiveModel == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "active_model field required"})
+		return
+	}
+
+	_, err := h.db.Exec(`
+		INSERT INTO app_settings (key, value, updated_at)
+		VALUES ('active_model', $1, CURRENT_TIMESTAMP)
+		ON CONFLICT (key) DO UPDATE
+		SET value = EXCLUDED.value,
+		    updated_at = CURRENT_TIMESTAMP`,
+		body.ActiveModel,
+	)
+	if err != nil {
+		log.Printf("[Handler] UpdateAISettings error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save setting"})
+		return
+	}
+
+	log.Printf("[AI] Active model switched to: %s", body.ActiveModel)
+	c.JSON(http.StatusOK, gin.H{"active_model": body.ActiveModel, "message": "model updated"})
+}
+

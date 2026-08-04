@@ -76,7 +76,7 @@ func TestAnalyzeATSMatchMock(t *testing.T) {
 	job := &models.Job{ID: "job-1", Title: "Go Dev", Description: "Go, Kubernetes"}
 	res := &models.Resume{ID: "resume-1", ExtractedSkills: []string{"Go", "Docker"}}
 
-	analysis, err := client.AnalyzeATSMatch(job, res)
+	analysis, err := client.AnalyzeATSMatch(job, res, "")
 	if err != nil {
 		t.Fatalf("AnalyzeATSMatch failed: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestAnalyzeATSMatchErrors(t *testing.T) {
 	t.Run("Ollama Host Unavailable", func(t *testing.T) {
 		// Call with an invalid/closed host
 		client := NewClient("http://localhost:9999", "gemma")
-		_, err := client.AnalyzeATSMatch(job, res)
+		_, err := client.AnalyzeATSMatch(job, res, "")
 		if err == nil {
 			t.Fatal("Expected error when Ollama host is unavailable, got nil")
 		}
@@ -109,7 +109,7 @@ func TestAnalyzeATSMatchErrors(t *testing.T) {
 		defer server.Close()
 
 		client := NewClient(server.URL, "gemma")
-		_, err := client.AnalyzeATSMatch(job, res)
+		_, err := client.AnalyzeATSMatch(job, res, "")
 		if err == nil {
 			t.Fatal("Expected error when Ollama returns non-200 status, got nil")
 		}
@@ -130,7 +130,7 @@ func TestAnalyzeATSMatchErrors(t *testing.T) {
 		defer server.Close()
 
 		client := NewClient(server.URL, "gemma")
-		_, err := client.AnalyzeATSMatch(job, res)
+		_, err := client.AnalyzeATSMatch(job, res, "")
 		if err == nil {
 			t.Fatal("Expected error when parsing bad response, got nil")
 		}

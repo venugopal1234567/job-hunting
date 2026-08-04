@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   Download, Save, Upload, Clock, PanelRight, PanelRightClose,
   FileText, AlertCircle, Loader2, CheckCircle2, GitBranch,
-  Sparkles, Cpu, Zap, ThumbsUp, ThumbsDown, CornerDownLeft, Check, X
+  Sparkles, Cpu, Zap, ThumbsUp, ThumbsDown, CornerDownLeft, Check, X, RotateCcw
 } from 'lucide-react';
 import { Job, ResumeVersion, TrackedChange } from '../../types';
 import { getResumeFullText, getActiveResume, analyzeJob, getResumeVersions, getVersionText, uploadResume } from '../../services/api';
@@ -346,18 +346,119 @@ const formatResumeTextToHTML = (text: string): string => {
   return htmlLines.join('\n');
 };
 
+interface MatchResult {
+  start: number;
+  end: number;
+}
+
+const expandToWordBoundaries = (text: string, start: number, end: number): MatchResult => {
+  let newStart = start;
+  let newEnd = end;
+  const isWordChar = (char: string) => /[a-zA-Z0-9_]/.test(char);
+
+  if (start > 0 && isWordChar(text[start]) && isWordChar(text[start - 1])) {
+    while (newStart > 0 && isWordChar(text[newStart - 1])) {
+      newStart--;
+    }
+  }
+
+  if (end < text.length && isWordChar(text[end - 1]) && isWordChar(text[end])) {
+    while (newEnd < text.length && isWordChar(text[newEnd])) {
+      newEnd++;
+    }
+  }
+
+  return { start: newStart, end: newEnd };
+};
+
+const findFlexibleMatch = (text: string, pattern: string): MatchResult | null => {
+  const normalize = (str: string) => str.replace(/[\s\u200b\u200c\u200d\ufeff]+/g, ' ').trim().toLowerCase();
+  
+  const cleanText = text.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
+  const normPattern = normalize(pattern);
+  if (!normPattern) return null;
+
+  const stripPrefix = (str: string) => str.replace(/^[•\-\*\s]+/, '').trim();
+  const normPatternClean = stripPrefix(normPattern);
+  if (!normPatternClean) return null;
+
+  const words = normPatternClean.split(' ').filter(w => w !== '').map(w => w.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'));
+  if (words.length === 0) return null;
+
+  try {
+    const regexStr = '[•\\-\\*\\s]*' + words.join('[\\s\\r\\n\\W]*');
+    const regex = new RegExp(regexStr, 'i');
+    const match = cleanText.match(regex);
+    if (match && match.index !== undefined) {
+      return expandToWordBoundaries(cleanText, match.index, match.index + match[0].length);
+    }
+  } catch (e) {
+    // Ignore regex errors
+  }
+
+  const cleanPattern = pattern.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
+  const idx = cleanText.indexOf(cleanPattern);
+  if (idx !== -1) {
+    return expandToWordBoundaries(cleanText, idx, idx + cleanPattern.length);
+  }
+
+  const cleanPatternNoPunct = cleanPattern.trim().replace(/[;,.:\s]+$/, '');
+  const idx2 = cleanText.indexOf(cleanPatternNoPunct);
+  if (idx2 !== -1) {
+    return expandToWordBoundaries(cleanText, idx2, idx2 + cleanPatternNoPunct.length);
+  }
+
+  return null;
+};
+
+interface AppliedMatch {
+  change: TrackedChange;
+  start: number;
+  end: number;
+}
+
 const applyPendingChangesToText = (text: string, pendingChanges: TrackedChange[]): string => {
-  let result = text;
+  const matches: AppliedMatch[] = [];
+
+  // 1. Find all matches in the original unmodified text
   pendingChanges.forEach(change => {
     if (change.status !== 'pending') return;
-    const originalClean = change.original.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
-    const idx = result.indexOf(originalClean);
-    if (idx !== -1) {
-      const delTag = `<del class="bg-rose-500/10 text-rose-600 line-through decoration-rose-500 cursor-pointer px-0.5 rounded select-all font-medium inline" data-edit-id="${change.id}">${originalClean}</del>`;
-      const insTag = `<ins class="bg-emerald-500/10 text-emerald-600 no-underline cursor-pointer border-b border-dashed border-emerald-500 px-0.5 rounded font-medium inline" data-edit-id="${change.id}">${change.replacement}</ins>`;
-      result = result.slice(0, idx) + delTag + insTag + result.slice(idx + originalClean.length);
+    const match = findFlexibleMatch(text, change.original);
+    if (match) {
+      matches.push({ change, start: match.start, end: match.end });
     }
   });
+
+  // 2. Filter out overlapping matches
+  // Sort matches by start index ascending for overlap check
+  matches.sort((a, b) => a.start - b.start);
+  const nonOverlapping: AppliedMatch[] = [];
+  let lastEnd = -1;
+
+  for (const m of matches) {
+    if (m.start >= lastEnd) {
+      nonOverlapping.push(m);
+      lastEnd = m.end;
+    } else {
+      console.warn(`[AI Editor] Discarding overlapping render for: "${m.change.original}"`);
+    }
+  }
+
+  // 3. Sort non-overlapping matches descending (back-to-front)
+  nonOverlapping.sort((a, b) => b.start - a.start);
+
+  // 4. Apply replacements from back to front
+  let result = text;
+  for (const m of nonOverlapping) {
+    const matchedText = result.slice(m.start, m.end);
+    if (matchedText.includes('<del') || matchedText.includes('<ins') || matchedText.includes('class=')) {
+      continue;
+    }
+    const delTag = `<del class="bg-rose-500/10 text-rose-600 line-through decoration-rose-500 cursor-pointer px-0.5 rounded select-all font-medium inline" data-edit-id="${m.change.id}">${matchedText}</del>`;
+    const insTag = `<ins class="bg-emerald-500/10 text-emerald-600 no-underline cursor-pointer border-b border-dashed border-emerald-500 px-0.5 rounded font-medium inline" data-edit-id="${m.change.id}">${m.change.replacement}</ins>`;
+    result = result.slice(0, m.start) + delTag + insTag + result.slice(m.end);
+  }
+
   return result;
 };
 
@@ -408,7 +509,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
     rejectChange,
     saveContent,
     saveAsApplied,
+    revertContent,
     setChatMessages,
+    applyFullResume,
   } = useResumeEditor(selectedJob?.id);
 
   const [loadingResume, setLoadingResume] = useState(true);
@@ -427,7 +530,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
   const [selectedEditId, setSelectedEditId] = useState<string | null>(null);
   const [cardPosition, setCardPosition] = useState<{ x: number, y: number } | null>(null);
   const [refineInput, setRefineInput] = useState('');
+  const [activeModel, setActiveModel] = useState<string>('');
   
+
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -462,6 +567,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
     if (selectedJob && editorContent) {
       runATS();
     }
+    // Clear chat history when the target job changes to isolate sessions
+    setChatMessages([]);
   }, [selectedJob?.id]);
 
   // Debounced auto-save on content change
@@ -502,6 +609,27 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
       if (selectedJob) runATS();
     }
   }, [saveContent, selectedJob, runATS]);
+
+  const handleRevert = useCallback(async () => {
+    if (!window.confirm('Are you sure you want to revert all changes? This will discard all edits and restore the original uploaded resume.')) {
+      return;
+    }
+    const result = await revertContent();
+    if (result) {
+      setChatMessages([]); // Reset chat history on revert to start a clean session
+      setSaveMessage('Reverted!');
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => setSaveMessage(''), 2000);
+      // Re-run ATS after reverting
+      if (selectedJob) runATS();
+    }
+  }, [revertContent, selectedJob, runATS, setChatMessages]);
+
+  const handleApplyFullResume = useCallback(async (text: string) => {
+    applyFullResume(text);
+    await saveContent(text);
+    if (selectedJob) runATS();
+  }, [applyFullResume, saveContent, selectedJob, runATS]);
 
   const handleDownloadPDF = () => {
     const resumeHTML = generatePrintHTML(editorContent);
@@ -650,6 +778,17 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
           >
             {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
             Save
+          </button>
+
+          <button
+            id="btn-revert-resume"
+            onClick={handleRevert}
+            disabled={isSaving}
+            className="btn-ghost text-xs flex items-center gap-1.5 text-rose-400 hover:text-rose-300 disabled:opacity-40"
+            title="Revert all edits back to original PDF text"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            Revert
           </button>
 
           <button
@@ -1034,11 +1173,14 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
               messages={chatMessages}
               loading={isChatLoading}
               trackedChanges={trackedChanges}
-              onSend={sendMessage}
+              onSend={(text) => sendMessage(text, activeModel)}
               onAccept={acceptChange}
               onReject={rejectChange}
               onAnswerGap={answerGapQuestion}
               jobTitle={selectedJob?.title}
+              activeModel={activeModel}
+              onModelChange={setActiveModel}
+              onApplyFullResume={handleApplyFullResume}
               onSelectEdit={(id) => {
                 // Find the edit element in visual editor and trigger the card
                 setTimeout(() => {

@@ -114,13 +114,15 @@ type ChatRequest struct {
 	Message    string `json:"message"`
 	ResumeText string `json:"resume_text"`
 	JobID      string `json:"job_id,omitempty"`
+	Model      string `json:"model,omitempty"` // optional per-request model override
 }
 
 // ChatResponse is the AI assistant's response
 type ChatResponse struct {
-	Message       string              `json:"message"`
-	ProposedEdits []ProposedEdit      `json:"proposed_edits,omitempty"`
-	GapPrompts    []GapQuestionPrompt `json:"gap_prompts,omitempty"`
+	Message               string              `json:"message"`
+	ProposedEdits         []ProposedEdit      `json:"proposed_edits,omitempty"`
+	GapPrompts            []GapQuestionPrompt `json:"gap_prompts,omitempty"`
+	FullResumeReplacement string              `json:"full_resume_replacement,omitempty"`
 }
 
 // ResumeVersion is a snapshot of a resume at the time of applying
@@ -135,3 +137,19 @@ type ResumeVersion struct {
 	AppliedAt    time.Time  `json:"applied_at"`
 	Source       string     `json:"source"`
 }
+
+// OllamaModel represents a locally pulled Ollama model
+type OllamaModel struct {
+	Name       string    `json:"name"`
+	Size       int64     `json:"size"`
+	ModifiedAt time.Time `json:"modified_at"`
+	Family     string    `json:"family,omitempty"`
+}
+
+// AISettings holds the current AI model configuration
+type AISettings struct {
+	ActiveModel    string        `json:"active_model"`
+	DefaultModel   string        `json:"default_model"`
+	AvailableModels []OllamaModel `json:"available_models"`
+}
+

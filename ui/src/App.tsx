@@ -6,6 +6,7 @@ import JobCard from './components/dashboard/JobCard';
 import JobDetailModal from './components/job-detail/JobDetailModal';
 import ResumeEditor from './components/resume/ResumeEditor';
 import SourceManager from './components/settings/SourceManager';
+import AIModelPicker from './components/settings/AIModelPicker';
 import { useJobs } from './hooks/useJobs';
 import { useResume } from './hooks/useResume';
 import { checkHealth } from './services/api';
@@ -151,11 +152,18 @@ function App() {
             <div className="mb-6">
               <h2 className="text-xl font-bold text-white">Settings</h2>
               <p className="text-sm text-gray-400 mt-1">
-                Configure job board scraping targets and scheduling preferences.
+                Configure AI models, job board scraping targets, and scheduling preferences.
               </p>
             </div>
-            <div className="glass rounded-xl p-6">
-              <SourceManager />
+            <div className="space-y-5">
+              {/* AI Model Picker */}
+              <div className="glass rounded-xl p-6">
+                <AIModelPicker />
+              </div>
+              {/* Job Board Sources */}
+              <div className="glass rounded-xl p-6">
+                <SourceManager />
+              </div>
             </div>
           </div>
         )}

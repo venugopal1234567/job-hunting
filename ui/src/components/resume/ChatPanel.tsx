@@ -1,9 +1,10 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
   Send, Loader2, Bot, User, Check, X, HelpCircle,
-  Sparkles, ChevronDown, ChevronUp, RefreshCw, AlertCircle
+  Sparkles, ChevronDown, ChevronUp, RefreshCw, AlertCircle, Cpu
 } from 'lucide-react';
 import { ChatMessage, TrackedChange } from '../../types';
+import { getAISettings, OllamaModel } from '../../services/api';
 
 interface ChatPanelProps {
   messages: ChatMessage[];
@@ -15,6 +16,9 @@ interface ChatPanelProps {
   onAnswerGap: (skill: string, answer: 'yes' | 'no' | string) => void;
   onSelectEdit?: (id: string) => void;
   jobTitle?: string;
+  activeModel?: string;
+  onModelChange?: (model: string) => void;
+  onApplyFullResume?: (text: string) => void;
 }
 
 const ChatPanel: React.FC<ChatPanelProps> = ({
@@ -26,12 +30,44 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   onReject,
   onSelectEdit,
   jobTitle,
+  activeModel: activeModelProp,
+  onModelChange,
+  onApplyFullResume,
 }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [expandedEdits, setExpandedEdits] = useState<Record<string, boolean>>({});
   
   // Track wizard answers
   const [answers, setAnswers] = useState<Record<string, { answered: boolean; hasSkill: boolean; details: string }>>({});
+  const [availableModels, setAvailableModels] = useState<OllamaModel[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>(activeModelProp || '');
+  const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+
+  // Load models once on mount
+  useEffect(() => {
+    getAISettings().then(s => {
+      setAvailableModels(s.available_models || []);
+      if (!activeModelProp) setSelectedModel(s.active_model || '');
+    }).catch(() => {});
+  }, [activeModelProp]);
+
+  // Sync if parent changes it
+  useEffect(() => {
+    if (activeModelProp) setSelectedModel(activeModelProp);
+  }, [activeModelProp]);
+
+  const handleModelSelect = useCallback((name: string) => {
+    setSelectedModel(name);
+    setModelDropdownOpen(false);
+    onModelChange?.(name);
+  }, [onModelChange]);
+
+  const shortModelName = (name: string) => {
+    // Show just the last segment after / and drop the tag if it's 'latest'
+    const base = name.split('/').pop() || name;
+    const [id, tag] = base.split(':');
+    return tag && tag !== 'latest' ? `${id}:${tag}` : id;
+  };
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -74,27 +110,70 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   return (
     <div className="flex flex-col h-full bg-surface-100" id="chat-panel">
       {/* Header */}
-      <div className="flex-shrink-0 px-4 py-3 border-b border-white/5 flex items-center gap-2">
-        <div className="w-7 h-7 rounded-lg bg-brand-500/20 border border-brand-500/30 flex items-center justify-center">
-          <Bot className="w-4 h-4 text-brand-400" />
-        </div>
-        <div>
-          <p className="text-sm font-semibold text-white">AI Resume Coach</p>
-          {jobTitle && (
-            <p className="text-[10px] text-gray-500 truncate max-w-[180px]">
-              Tailoring for: {jobTitle}
-            </p>
+      <div className="flex-shrink-0 px-4 py-3 border-b border-white/5">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-brand-500/20 border border-brand-500/30 flex items-center justify-center">
+            <Bot className="w-4 h-4 text-brand-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-white">AI Resume Coach</p>
+            {jobTitle && (
+              <p className="text-[10px] text-gray-500 truncate">
+                Tailoring for: {jobTitle}
+              </p>
+            )}
+          </div>
+          {/* Model Selector */}
+          <div className="relative flex-shrink-0">
+            <button
+              id="btn-model-selector"
+              onClick={() => setModelDropdownOpen(o => !o)}
+              className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all text-[10px] text-gray-400 hover:text-white max-w-[130px]"
+              title="Switch AI model for this session"
+            >
+              <Cpu className="w-3 h-3 text-violet-400 flex-shrink-0" />
+              <span className="truncate font-mono">{selectedModel ? shortModelName(selectedModel) : 'Model'}</span>
+              <ChevronDown className={`w-2.5 h-2.5 flex-shrink-0 transition-transform ${modelDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {modelDropdownOpen && (
+              <div className="absolute right-0 top-full mt-1 w-64 rounded-xl border border-white/10 bg-surface-100 shadow-2xl shadow-black/50 z-50 overflow-hidden animate-fade-in">
+                <div className="px-3 py-2 border-b border-white/5">
+                  <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wide">Select Model</p>
+                </div>
+                <div className="max-h-64 overflow-y-auto py-1">
+                  {availableModels.length === 0 ? (
+                    <p className="text-[10px] text-gray-500 px-3 py-3 text-center">No models found</p>
+                  ) : (
+                    availableModels.map(m => (
+                      <button
+                        key={m.name}
+                        id={`chat-model-${m.name.replace(/[^a-z0-9]/gi, '-')}`}
+                        onClick={() => handleModelSelect(m.name)}
+                        className={`w-full text-left px-3 py-2 flex items-center justify-between gap-2 transition-colors hover:bg-white/5 ${
+                          m.name === selectedModel ? 'text-brand-300' : 'text-gray-300'
+                        }`}
+                      >
+                        <span className="text-[11px] font-mono truncate">{shortModelName(m.name)}</span>
+                        {m.name === selectedModel && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-brand-400 flex-shrink-0" />
+                        )}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+          {messages.length > 0 && !loading && (
+            <button
+              onClick={handleRestart}
+              className="text-[10px] bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white border border-white/10 px-2 py-1 rounded-lg flex items-center gap-1 transition-all"
+              title="Restart ATS tailoring scanner"
+            >
+              <RefreshCw className="w-3 h-3" /> Re-Check
+            </button>
           )}
         </div>
-        {messages.length > 0 && !loading && (
-          <button
-            onClick={handleRestart}
-            className="ml-auto text-[10px] bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white border border-white/10 px-2 py-1 rounded-lg flex items-center gap-1 transition-all"
-            title="Restart ATS tailoring scanner"
-          >
-            <RefreshCw className="w-3 h-3" /> Re-Check
-          </button>
-        )}
       </div>
 
       {/* Messages / Wizard Container */}
@@ -143,6 +222,40 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
               <span>Coach Feedback</span>
             </div>
             <p>{latestMessage.content}</p>
+          </div>
+        )}
+
+        {/* Full Resume Replacement Card */}
+        {latestMessage?.fullResumeReplacement && !loading && (
+          <div className="rounded-xl border border-brand-500/30 bg-brand-500/5 p-4 text-xs space-y-3">
+            <div className="flex items-start gap-2">
+              <Sparkles className="w-4 h-4 text-brand-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-white">Full Resume Redesign Available</p>
+                <p className="text-gray-400 text-[11px] mt-0.5 leading-relaxed">
+                  The AI has generated a complete, clean, and fully tailored resume that addresses all skill gaps and resolves any layout corruption.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => onApplyFullResume && onApplyFullResume(latestMessage.fullResumeReplacement || '')}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-brand-600 hover:bg-brand-500 text-white font-semibold shadow-lg hover:shadow-brand-500/20 transition-all"
+              >
+                <Check className="w-3.5 h-3.5" /> Apply Complete Resume
+              </button>
+            </div>
+            
+            {/* Simple Collapsible Preview */}
+            <details className="text-[11px] text-gray-500 bg-white/5 rounded-lg border border-white/5">
+              <summary className="cursor-pointer p-2 hover:text-white select-none font-medium">
+                Preview New Resume
+              </summary>
+              <pre className="p-3 overflow-y-auto font-mono whitespace-pre-wrap max-h-48 text-[9px] border-t border-white/5 bg-black/20 text-gray-400 leading-normal">
+                {latestMessage.fullResumeReplacement}
+              </pre>
+            </details>
           </div>
         )}
 

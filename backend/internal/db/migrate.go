@@ -110,6 +110,18 @@ VALUES
 ON CONFLICT (board_name) DO NOTHING;
 
 
+-- 7. App Settings Table (key-value for runtime configuration)
+CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Seed default AI model setting (only if not already set)
+INSERT INTO app_settings (key, value)
+VALUES ('active_model', 'rafw007/qwen35-claude-coder:4b')
+ON CONFLICT (key) DO NOTHING;
+
 -- Seed skill taxonomy
 INSERT INTO skills (name, category) VALUES
     ('Go', 'Language'), ('Python', 'Language'), ('TypeScript', 'Language'),

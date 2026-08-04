@@ -40,6 +40,7 @@ func SetupRouter(h *Handler) *gin.Engine {
 			res.GET("/active/text", h.GetResumeFullText)
 			res.GET("/active/pdf", h.GetActiveResumePDF)
 			res.PUT("/active", h.UpdateResumeText)
+			res.POST("/revert", h.RevertResumeText)
 			res.POST("/chat", h.ChatResume)
 			res.GET("/versions", h.GetResumeVersions)
 			res.POST("/versions", h.SaveResumeVersion)
@@ -51,7 +52,12 @@ func SetupRouter(h *Handler) *gin.Engine {
 		{
 			settings.GET("", h.GetSettings)
 			settings.PUT("/sources", h.UpdateSources)
+			settings.GET("/ai", h.GetAISettings)
+			settings.PUT("/ai", h.UpdateAISettings)
 		}
+
+		// AI utility endpoints
+		v1.GET("/ai/models", h.GetAIModels)
 	}
 
 	return r

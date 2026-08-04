@@ -70,12 +70,23 @@ export const saveResumeText = async (text: string): Promise<{ id: string; skills
   return data;
 };
 
+export const revertResumeText = async (): Promise<{ id: string; text: string; skills: string[]; message: string }> => {
+  const { data } = await api.post('/resume/revert');
+  return data;
+};
+
 export const chatWithResume = async (
   message: string,
   resumeText: string,
-  jobId?: string
-): Promise<{ message: string; proposed_edits?: any[]; gap_prompts?: any[] }> => {
-  const { data } = await api.post('/resume/chat', { message, resume_text: resumeText, job_id: jobId || '' });
+  jobId?: string,
+  model?: string
+): Promise<{ message: string; proposed_edits?: any[]; gap_prompts?: any[]; full_resume_replacement?: string }> => {
+  const { data } = await api.post('/resume/chat', {
+    message,
+    resume_text: resumeText,
+    job_id: jobId || '',
+    model: model || '',
+  });
   return data;
 };
 
@@ -117,4 +128,34 @@ export const checkHealth = async (): Promise<boolean> => {
   } catch {
     return false;
   }
+};
+
+// ─── AI Model Settings ─────────────────────────────────────────────────────────
+
+export interface OllamaModel {
+  name: string;
+  size: number;
+  modified_at: string;
+  family?: string;
+}
+
+export interface AISettings {
+  active_model: string;
+  default_model: string;
+  available_models: OllamaModel[];
+}
+
+export const getAISettings = async (): Promise<AISettings> => {
+  const { data } = await api.get<AISettings>('/settings/ai');
+  return data;
+};
+
+export const updateAISettings = async (activeModel: string): Promise<{ active_model: string; message: string }> => {
+  const { data } = await api.put('/settings/ai', { active_model: activeModel });
+  return data;
+};
+
+export const getAIModels = async (): Promise<OllamaModel[]> => {
+  const { data } = await api.get<{ models: OllamaModel[] }>('/ai/models');
+  return data.models;
 };
