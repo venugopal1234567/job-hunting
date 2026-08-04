@@ -198,16 +198,30 @@ func inferCountryRemoteRocketship(location string) string {
 		return "Worldwide"
 	}
 
-	// Precise India matching
-	if strings.Contains(loc, "india") || strings.Contains(loc, "in") {
-		if strings.Contains(loc, "indiana") || strings.Contains(loc, "indonesia") || strings.Contains(loc, "indies") {
-			// Do nothing / fallback
-		} else {
-			return "India"
+	// Clean punctuation and check for whole word match of "india", "ind", or "in"
+	cleanLoc := strings.ReplaceAll(loc, ",", " ")
+	cleanLoc = strings.ReplaceAll(cleanLoc, "-", " ")
+	words := strings.Fields(cleanLoc)
+
+	isIndia := false
+	for _, w := range words {
+		if w == "india" || w == "ind" || w == "in" {
+			isIndia = true
+			break
 		}
 	}
 
-	cities := []string{"bangalore", "bengaluru", "karnataka", "pune", "hyderabad", "chennai", "mumbai", "delhi", "noida", "gurgaon"}
+	if isIndia {
+		if strings.Contains(loc, "indiana") || strings.Contains(loc, "indonesia") || strings.Contains(loc, "indies") {
+			isIndia = false
+		}
+	}
+
+	if isIndia {
+		return "India"
+	}
+
+	cities := []string{"bangalore", "bengaluru", "karnataka", "pune", "hyderabad", "chennai", "mumbai", "delhi", "noida", "gurgaon", "kolkata", "calcutta"}
 	for _, city := range cities {
 		if strings.Contains(loc, city) {
 			return "India"
