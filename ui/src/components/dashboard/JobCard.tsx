@@ -14,6 +14,7 @@ const SOURCE_COLORS: Record<string, string> = {
   weworkremotely: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
   builtin: 'bg-green-500/20 text-green-300 border-green-500/30',
   welcometothejungle: 'bg-pink-500/20 text-pink-300 border-pink-500/30',
+  googlejobs: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
 };
 
 const ATS_COLOR = (score: number) => {

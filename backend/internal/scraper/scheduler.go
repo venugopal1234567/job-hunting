@@ -32,6 +32,7 @@ func NewScheduler(db *sql.DB) *Scheduler {
 		"builtinremote":    NewBuiltInScraper(),
 		"flexboard":        NewFlexboardScraper(),
 		"vacancyglobalpro": NewVacancyGlobalProScraper(),
+		"googlejobs":       NewGoogleJobsScraper(),
 	}
 
 	return &Scheduler{
@@ -99,13 +100,14 @@ func (s *Scheduler) TriggerAll() {
 	}
 }
 
-// PurgeStaleJobs deletes jobs older than 30 days from the database
+// PurgeStaleJobs deletes jobs older than 30 days from the database (excluding googlejobs)
 func (s *Scheduler) PurgeStaleJobs() {
 	cutoff := time.Now().AddDate(0, 0, -30)
 	res, err := s.db.Exec(`
 		DELETE FROM jobs 
-		WHERE (posted_at IS NOT NULL AND posted_at < $1)
-		   OR (posted_at IS NULL AND scraped_at < $1)
+		WHERE ((posted_at IS NOT NULL AND posted_at < $1)
+		   OR (posted_at IS NULL AND scraped_at < $1))
+		   AND source_board != 'googlejobs'
 	`, cutoff)
 	if err != nil {
 		log.Printf("[Scheduler] Error purging stale jobs: %v", err)
@@ -124,6 +126,16 @@ func (s *Scheduler) RunScraper(boardName, targetURL string) {
 		log.Printf("[Scheduler] No scraper registered for '%s' (key: '%s') — skipping", boardName, key)
 		s.updateLastRun(boardName)
 		return
+	}
+
+	// Conserve SerpAPI limit: ensure googlejobs is run at most once every 4 hours (with a small safety buffer)
+	if key == "googlejobs" {
+		var lastRunAt sql.NullTime
+		err := s.db.QueryRow(`SELECT last_run_at FROM scraper_configs WHERE LOWER(REPLACE(board_name, ' ', '')) = 'googlejobs'`).Scan(&lastRunAt)
+		if err == nil && lastRunAt.Valid && time.Since(lastRunAt.Time) < (3*time.Hour+50*time.Minute) {
+			log.Printf("[Scheduler] Skipping '%s' execution to conserve SerpAPI limits. Last run was at %v (%v ago)", boardName, lastRunAt.Time, time.Since(lastRunAt.Time))
+			return
+		}
 	}
 
 	log.Printf("[Scheduler] Running scraper '%s'", boardName)

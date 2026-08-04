@@ -37,6 +37,7 @@ services:
       OLLAMA_HOST: http://host.docker.internal:11434
       OLLAMA_MODEL: rafw007/qwen35-claude-coder:4b
       SERVER_PORT: 8080
+      SERPAPI_API_KEY: "<API_KEY>"
     ports:
       - "8080:8080"
     depends_on:

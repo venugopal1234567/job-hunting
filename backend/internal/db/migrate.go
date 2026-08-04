@@ -107,7 +107,8 @@ VALUES
     ('HNHiring', 'https://hn.algolia.com/api/v1/search?query=golang+remote&tags=comment', true, '@every 1h'),
     ('BuiltIn Remote', 'https://builtin.com/jobs/remote/senior?search=Go&daysSinceUpdated=7&skills=Go%2CPython%2CAWS%2CDocker%2CGCP%2CTypescript%2CAzure%2CCi%2FCd%2CPostgres%2CRust%2CSQL%2CNode.js&country=IND&allLocations=true', true, '@every 2h'),
     ('FlexBoard', 'https://flexboard.9y.liveblog365.com/?search=golang', true, '@every 1h'),
-    ('VacancyGlobalPro', 'https://vacancyglobalpro.up.railway.app/remote-golang-jobs', true, '@every 1h')
+    ('VacancyGlobalPro', 'https://vacancyglobalpro.up.railway.app/remote-golang-jobs', true, '@every 1h'),
+    ('GoogleJobs', 'https://www.google.com/search?q=intitle%3A%22Senior+Golang%22+OR+intitle%3A%22Lead+Go%22+%22remote%22+%22India%22+OR+%22worldwide%22+jobs&udm=8&jbr=sep:0|https://www.google.com/search?q=%22Senior+Golang+Engineer%22+%22100%25+remote%22+OR+%22fully+remote%22+%22worldwide%22+OR+%22Anywhere%22&udm=8&jbr=sep:0', true, '@every 4h')
 ON CONFLICT (board_name) DO NOTHING;
 
 -- 7. App Settings Table (key-value for runtime configuration)
