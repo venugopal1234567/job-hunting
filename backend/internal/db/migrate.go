@@ -102,6 +102,7 @@ VALUES
     ('Remotive', 'https://remotive.com/api/remote-jobs?category=software-dev&limit=50', true, '@every 1h'),
     ('Arbeitnow', 'https://www.arbeitnow.com/api/job-board-api?remote=true&page=1', true, '@every 1h'),
     ('WeWorkRemotely', 'https://weworkremotely.com/categories/remote-programming-jobs.rss', true, '@every 1h'),
+    ('WeWorkRemotely Golang', 'https://weworkremotely.com/remote-jobs-golang', true, '@every 1h'),
     ('RemoteOK', 'https://remoteok.com/api?tag=golang', true, '@every 1h'),
     ('GolangProjects', 'https://www.golangprojects.com/rss.xml', true, '@every 1h'),
     ('HNHiring', 'https://hn.algolia.com/api/v1/search?query=golang+remote&tags=comment', true, '@every 1h'),
