@@ -99,13 +99,9 @@ CREATE TABLE IF NOT EXISTS scraper_configs (
 -- Seed default scraper targets (only inserts if not already present — preserves user edits)
 INSERT INTO scraper_configs (board_name, target_url, enabled, cron_schedule)
 VALUES
-    ('Remotive', 'https://remotive.com/api/remote-jobs?category=software-dev&limit=50', true, '@every 1h'),
-    ('Arbeitnow', 'https://www.arbeitnow.com/api/job-board-api?remote=true&page=1', true, '@every 1h'),
-    ('WeWorkRemotely', 'https://weworkremotely.com/categories/remote-programming-jobs.rss', true, '@every 1h'),
     ('WeWorkRemotely Golang', 'https://weworkremotely.com/remote-jobs-golang', true, '@every 1h'),
     ('RemoteOK', 'https://remoteok.com/api?tag=golang', true, '@every 1h'),
     ('GolangProjects', 'https://www.golangprojects.com/rss.xml', true, '@every 1h'),
-    ('HNHiring', 'https://hn.algolia.com/api/v1/search?query=golang+remote&tags=comment', true, '@every 1h'),
     ('BuiltIn Remote', 'https://builtin.com/jobs/remote/senior?search=Go&daysSinceUpdated=7&skills=Go%2CPython%2CAWS%2CDocker%2CGCP%2CTypescript%2CAzure%2CCi%2FCd%2CPostgres%2CRust%2CSQL%2CNode.js&country=IND&allLocations=true', true, '@every 2h'),
     ('FlexBoard', 'https://flexboard.9y.liveblog365.com/?search=golang', true, '@every 1h'),
     ('VacancyGlobalPro', 'https://vacancyglobalpro.up.railway.app/remote-golang-jobs', true, '@every 1h'),

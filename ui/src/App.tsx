@@ -19,7 +19,50 @@ function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [viewingJob, setViewingJob] = useState<Job | null>(null);
-  const [currentFilters, setCurrentFilters] = useState<JobFilterParams>({ days: 30, page: 1, limit: 20 });
+  const [currentFilters, setCurrentFilters] = useState<JobFilterParams>(() => {
+    const savedDays = localStorage.getItem('filter_days');
+    const days = savedDays ? parseInt(savedDays, 10) : 30;
+
+    let skills: string | undefined;
+    try {
+      const savedSkills = localStorage.getItem('filter_skills');
+      if (savedSkills) {
+        const parsed = JSON.parse(savedSkills);
+        if (parsed.length > 0) skills = parsed.join(',');
+      }
+    } catch (_) {}
+
+    let country: string | undefined;
+    try {
+      const savedCountries = localStorage.getItem('filter_countries');
+      if (savedCountries) {
+        const parsed = JSON.parse(savedCountries);
+        if (parsed.length > 0) country = parsed.join(',');
+      }
+    } catch (_) {}
+
+    const onlyEnabledStr = localStorage.getItem('filter_only_enabled');
+    const only_enabled = onlyEnabledStr ? onlyEnabledStr === 'true' : true;
+
+    let sources: string | undefined;
+    try {
+      const savedSources = localStorage.getItem('filter_sources');
+      if (savedSources) {
+        const parsed = JSON.parse(savedSources);
+        if (parsed.length > 0) sources = parsed.join(',');
+      }
+    } catch (_) {}
+
+    return {
+      days,
+      skills,
+      country,
+      only_enabled,
+      sources,
+      page: 1,
+      limit: 20
+    };
+  });
   const [apiHealthy, setApiHealthy] = useState(false);
 
   const { jobs, total, loading, error, refresh, triggerManualScrape, scraping } = useJobs(currentFilters);

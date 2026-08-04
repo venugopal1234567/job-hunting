@@ -43,7 +43,7 @@ export const useJobs = (filters: JobFilterParams = {}) => {
 
   useEffect(() => {
     fetchJobs(filters);
-  }, []);
+  }, [filters, fetchJobs]);
 
   const refresh = (params?: JobFilterParams) => fetchJobs(params ?? filters);
 
