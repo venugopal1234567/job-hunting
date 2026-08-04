@@ -30,6 +30,7 @@ func NewScheduler(db *sql.DB) *Scheduler {
 		"remoteok":       NewRemoteOKScraper(),
 		"builtin":        NewBuiltInScraper(),
 		"builtinremote":  NewBuiltInScraper(),
+		"flexboard":      NewFlexboardScraper(),
 	}
 
 	return &Scheduler{

@@ -123,6 +123,8 @@ func inferCountry(location string) string {
 		return "India"
 	case strings.Contains(loc, "uk") || strings.Contains(loc, "united kingdom"):
 		return "UK"
+	case strings.Contains(loc, "remote"):
+		return "Worldwide"
 	default:
 		return location
 	}

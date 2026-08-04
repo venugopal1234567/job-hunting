@@ -28,6 +28,8 @@ export interface JobFilterParams {
   skills?: string;
   days?: number;
   country?: string;
+  only_enabled?: boolean;
+  sources?: string;
   page?: number;
   limit?: number;
 }

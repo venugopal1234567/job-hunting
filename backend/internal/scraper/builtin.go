@@ -30,12 +30,12 @@ func (s *BuiltInScraper) Name() string { return "builtin" }
 
 func (s *BuiltInScraper) Scrape(targetURL string) ([]models.Job, error) {
 	if targetURL == "" {
-		targetURL = "https://builtin.com/jobs/remote/senior?search=Go&daysSinceUpdated=3&skills=Go%2CPython%2CAWS%2CDocker%2CGCP%2CTypescript%2CAzure%2CCi%2FCd%2CPostgres%2CRust%2CSQL%2CNode.js&country=IND&allLocations=true"
+		targetURL = "https://builtin.com/jobs/remote/senior?search=Go&daysSinceUpdated=7&skills=Go%2CPython%2CAWS%2CDocker%2CGCP%2CTypescript%2CAzure%2CCi%2FCd%2CPostgres%2CRust%2CSQL%2CNode.js&country=IND&allLocations=true"
 	} else if !strings.Contains(targetURL, "daysSinceUpdated") {
 		if strings.Contains(targetURL, "?") {
-			targetURL += "&daysSinceUpdated=3"
+			targetURL += "&daysSinceUpdated=7"
 		} else {
-			targetURL += "?daysSinceUpdated=3"
+			targetURL += "?daysSinceUpdated=7"
 		}
 	}
 

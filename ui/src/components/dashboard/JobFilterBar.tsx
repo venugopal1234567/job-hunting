@@ -42,10 +42,22 @@ const JobFilterBar: React.FC<JobFilterBarProps> = ({ onFilter, loading }) => {
       return [];
     }
   });
+  const [onlyEnabled, setOnlyEnabled] = useState<boolean>(() => {
+    const saved = localStorage.getItem('filter_only_enabled');
+    return saved ? saved === 'true' : true;
+  });
+  const [selectedSources, setSelectedSources] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('filter_sources');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
   // Apply filters on mount
   React.useEffect(() => {
-    applyFilter(selectedSkills, days, countries);
+    applyFilter(selectedSkills, days, countries, onlyEnabled, selectedSources);
   }, []);
 
   const addSkill = (skill: string) => {
@@ -54,7 +66,7 @@ const JobFilterBar: React.FC<JobFilterBarProps> = ({ onFilter, loading }) => {
       const updated = [...selectedSkills, s];
       setSelectedSkills(updated);
       localStorage.setItem('filter_skills', JSON.stringify(updated));
-      applyFilter(updated, days, countries);
+      applyFilter(updated, days, countries, onlyEnabled, selectedSources);
     }
     setSkillInput('');
   };
@@ -63,14 +75,16 @@ const JobFilterBar: React.FC<JobFilterBarProps> = ({ onFilter, loading }) => {
     const updated = selectedSkills.filter(s => s !== skill);
     setSelectedSkills(updated);
     localStorage.setItem('filter_skills', JSON.stringify(updated));
-    applyFilter(updated, days, countries);
+    applyFilter(updated, days, countries, onlyEnabled, selectedSources);
   };
 
-  const applyFilter = (skills: string[], d: number, cList: string[]) => {
+  const applyFilter = (skills: string[], d: number, cList: string[], enabledOnly: boolean, boards: string[]) => {
     onFilter({
       skills: skills.length > 0 ? skills.join(',') : undefined,
       days: d,
       country: cList.length > 0 ? cList.join(',') : undefined,
+      only_enabled: enabledOnly,
+      sources: boards.length > 0 ? boards.join(',') : undefined,
       page: 1,
       limit: 20,
     });
@@ -86,7 +100,7 @@ const JobFilterBar: React.FC<JobFilterBarProps> = ({ onFilter, loading }) => {
   const handleDaysChange = (d: number) => {
     setDays(d);
     localStorage.setItem('filter_days', d.toString());
-    applyFilter(selectedSkills, d, countries);
+    applyFilter(selectedSkills, d, countries, onlyEnabled, selectedSources);
   };
 
   const toggleCountry = (c: string) => {
@@ -98,20 +112,42 @@ const JobFilterBar: React.FC<JobFilterBarProps> = ({ onFilter, loading }) => {
     }
     setCountries(updated);
     localStorage.setItem('filter_countries', JSON.stringify(updated));
-    applyFilter(selectedSkills, days, updated);
+    applyFilter(selectedSkills, days, updated, onlyEnabled, selectedSources);
+  };
+
+  const toggleSource = (board: string) => {
+    let updated: string[];
+    if (selectedSources.includes(board)) {
+      updated = selectedSources.filter(item => item !== board);
+    } else {
+      updated = [...selectedSources, board];
+    }
+    setSelectedSources(updated);
+    localStorage.setItem('filter_sources', JSON.stringify(updated));
+    applyFilter(selectedSkills, days, countries, onlyEnabled, updated);
+  };
+
+  const handleOnlyEnabledChange = (checked: boolean) => {
+    setOnlyEnabled(checked);
+    localStorage.setItem('filter_only_enabled', checked.toString());
+    applyFilter(selectedSkills, days, countries, checked, selectedSources);
   };
 
   const clearAll = () => {
     setSelectedSkills([]);
     setCountries([]);
     setDays(30);
+    setOnlyEnabled(true);
+    setSelectedSources([]);
     localStorage.removeItem('filter_skills');
     localStorage.removeItem('filter_countries');
     localStorage.setItem('filter_days', '30');
-    applyFilter([], 30, []);
+    localStorage.setItem('filter_only_enabled', 'true');
+    localStorage.removeItem('filter_sources');
+    applyFilter([], 30, [], true, []);
   };
 
-  const hasFilters = selectedSkills.length > 0 || countries.length > 0 || days !== 30;
+  const hasFilters = selectedSkills.length > 0 || countries.length > 0 || days !== 30 || !onlyEnabled || selectedSources.length > 0;
 
   return (
     <div className="glass rounded-xl p-4 mb-5 space-y-4">
@@ -125,7 +161,7 @@ const JobFilterBar: React.FC<JobFilterBarProps> = ({ onFilter, loading }) => {
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {/* Skills Multi-Select */}
         <div className="md:col-span-1">
           <label className="section-header">Target Skills</label>
@@ -198,7 +234,7 @@ const JobFilterBar: React.FC<JobFilterBarProps> = ({ onFilter, loading }) => {
                 const parts = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
                 setCountries(parts);
                 localStorage.setItem('filter_countries', JSON.stringify(parts));
-                applyFilter(selectedSkills, days, parts);
+                applyFilter(selectedSkills, days, parts, onlyEnabled, selectedSources);
               }}
               placeholder="e.g. Worldwide, US, India (comma separated)..."
               className="input-field w-full"
@@ -218,6 +254,47 @@ const JobFilterBar: React.FC<JobFilterBarProps> = ({ onFilter, loading }) => {
                 </button>
               ))}
             </div>
+          </div>
+        </div>
+
+        {/* Sources Filter */}
+        <div>
+          <label className="section-header">Scraped Sources</label>
+          <div className="flex flex-wrap gap-1 mt-1 mb-2">
+            {[
+              { label: 'FlexBoard', value: 'flexboard' },
+              { label: 'BuiltIn', value: 'builtin' },
+              { label: 'RemoteOK', value: 'remoteok' },
+              { label: 'WWR', value: 'weworkremotely' },
+              { label: 'Remotive', value: 'remotive' },
+              { label: 'Arbeitnow', value: 'arbeitnow' },
+              { label: 'GolangProj', value: 'golangprojects' },
+              { label: 'HNHiring', value: 'hnhiring' },
+            ].map(src => (
+              <button
+                key={src.value}
+                onClick={() => toggleSource(src.value)}
+                className={`py-1 px-2 rounded text-[10px] font-medium transition-colors ${
+                  selectedSources.includes(src.value)
+                    ? 'bg-brand-600/80 text-white'
+                    : 'bg-surface-200 text-gray-500 hover:text-gray-300'
+                }`}
+              >
+                {src.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center space-x-2 mt-2">
+            <input
+              type="checkbox"
+              id="only-enabled-checkbox"
+              checked={onlyEnabled}
+              onChange={e => handleOnlyEnabledChange(e.target.checked)}
+              className="w-4 h-4 accent-brand-600 rounded bg-surface-200 border-gray-600 focus:ring-brand-500 focus:ring-offset-gray-900 cursor-pointer"
+            />
+            <label htmlFor="only-enabled-checkbox" className="text-xs text-gray-300 font-medium cursor-pointer select-none">
+              Only Enabled Sources
+            </label>
           </div>
         </div>
       </div>

@@ -82,23 +82,53 @@ func (h *Handler) GetJobs(c *gin.Context) {
 		}
 	}
 
+	onlyEnabledStr := c.DefaultQuery("only_enabled", "true")
+	onlyEnabled := onlyEnabledStr == "true"
+	sourcesParam := c.DefaultQuery("sources", "")
+
 	// Build dynamic SQL query
 	args := []interface{}{}
-	conditions := []string{
-		"j.is_active = TRUE",
-		`LOWER(j.source_board) IN (
+	argIdx := 1
+
+	var sourceBoardCond string
+	if sourcesParam != "" {
+		boards := strings.Split(sourcesParam, ",")
+		var placeholders []string
+		for _, b := range boards {
+			b = strings.TrimSpace(strings.ToLower(b))
+			if b != "" {
+				placeholders = append(placeholders, fmt.Sprintf("$%d", argIdx))
+				args = append(args, b)
+				argIdx++
+			}
+		}
+		if len(placeholders) > 0 {
+			sourceBoardCond = fmt.Sprintf("LOWER(j.source_board) IN (%s)", strings.Join(placeholders, ", "))
+		}
+	}
+
+	if sourceBoardCond == "" {
+		sourceBoardCond = `LOWER(j.source_board) IN (
 			SELECT CASE 
 				WHEN LOWER(board_name) LIKE '%builtin%' THEN 'builtin'
 				ELSE LOWER(REGEXP_REPLACE(board_name, '\s+', '', 'g'))
 			END
-			FROM scraper_configs
-			WHERE enabled = TRUE
-		)`,
+			FROM scraper_configs`
+		if onlyEnabled {
+			sourceBoardCond += " WHERE enabled = TRUE"
+		}
+		sourceBoardCond += ")"
 	}
-	argIdx := 1
+
+	conditions := []string{
+		"j.is_active = TRUE",
+		sourceBoardCond,
+	}
 
 	// Filter by date cutoff (strict for short windows like 24h/3d/7d)
-	cutoff := time.Now().AddDate(0, 0, -days)
+	now := time.Now()
+	startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	cutoff := startOfToday.AddDate(0, 0, -days)
 	if days <= 7 {
 		conditions = append(conditions, fmt.Sprintf("j.posted_at >= $%d", argIdx))
 		args = append(args, cutoff)
