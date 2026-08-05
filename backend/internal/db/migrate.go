@@ -107,7 +107,8 @@ VALUES
     ('VacancyGlobalPro', 'https://vacancyglobalpro.up.railway.app/remote-golang-jobs', true, '@every 1h'),
     ('GoogleJobs', 'https://www.google.com/search?q=intitle%3A%22Senior+Golang%22+OR+intitle%3A%22Lead+Go%22+%22remote%22+%22India%22+OR+%22worldwide%22+jobs&udm=8&jbr=sep:0|https://www.google.com/search?q=%22Senior+Golang+Engineer%22+%22100%25+remote%22+OR+%22fully+remote%22+%22worldwide%22+OR+%22Anywhere%22&udm=8&jbr=sep:0', true, '@every 4h'),
     ('RemoteRocketship', 'https://www.remoterocketship.com/?ref=yanirs-established-remote&page=1&sort=DateAdded&jobTitle=Golang&locations=Worldwide%2CIndia', true, '@every 1h'),
-    ('LinkedIn', 'https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=golang&location=India&f_WT=2|https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=golang&location=Worldwide&f_WT=2', true, '@every 1h')
+    ('LinkedIn', 'https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=golang&location=India&f_WT=2|https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=golang&location=Worldwide&f_WT=2', true, '@every 1h'),
+    ('Glassdoor', 'https://www.glassdoor.co.in/Job/india-golang-jobs-SRCH_IL.0,5_KO6,12.htm?remoteWorkType=1', true, '@every 1h')
 ON CONFLICT (board_name) DO NOTHING;
 
 -- 7. App Settings Table (key-value for runtime configuration)

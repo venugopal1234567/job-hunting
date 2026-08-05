@@ -36,6 +36,7 @@ func NewScheduler(db *sql.DB) *Scheduler {
 		"googlejobs":           NewGoogleJobsScraper(),
 		"remoterocketship":     NewRemoteRocketshipScraper(),
 		"linkedin":             NewLinkedInScraper(),
+		"glassdoor":            NewGlassdoorScraper(),
 	}
 
 	return &Scheduler{

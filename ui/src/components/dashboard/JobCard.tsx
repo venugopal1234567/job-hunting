@@ -17,6 +17,7 @@ const SOURCE_COLORS: Record<string, string> = {
   googlejobs: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
   remoterocketship: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
   linkedin: 'bg-sky-500/20 text-sky-300 border-sky-500/30',
+  glassdoor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
 };
 
 const ATS_COLOR = (score: number) => {

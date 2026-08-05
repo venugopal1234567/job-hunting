@@ -221,7 +221,7 @@ func inferCountryRemoteRocketship(location string) string {
 		return "India"
 	}
 
-	cities := []string{"bangalore", "bengaluru", "karnataka", "pune", "hyderabad", "chennai", "mumbai", "delhi", "noida", "gurgaon", "kolkata", "calcutta"}
+	cities := []string{"bangalore", "bengaluru", "karnataka", "pune", "hyderabad", "hyderābād", "chennai", "mumbai", "delhi", "noida", "gurgaon", "kolkata", "calcutta"}
 	for _, city := range cities {
 		if strings.Contains(loc, city) {
 			return "India"
