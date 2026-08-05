@@ -280,6 +280,7 @@ const JobFilterBar: React.FC<JobFilterBarProps> = ({ onFilter, loading }) => {
               { label: 'Indeed', value: 'indeed' },
               { label: 'Naukri', value: 'naukri' },
               { label: 'ZipRecruiter', value: 'ziprecruiter' },
+              { label: 'RealWFA', value: 'realworkfromanywhere' },
             ].map(src => (
               <button
                 key={src.value}

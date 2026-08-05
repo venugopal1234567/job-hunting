@@ -113,7 +113,8 @@ VALUES
     ('BDJobs', 'https://jobs.bdjobs.com/jobsearch.asp?txtsearch=golang', true, '@every 1h'),
     ('Indeed', 'https://www.indeed.com/jobs?q=golang&l=Remote', true, '@every 1h'),
     ('Naukri', 'https://www.naukri.com/golang-jobs?wfhType=2', true, '@every 1h'),
-    ('ZipRecruiter', 'https://www.ziprecruiter.com/Jobs/Golang?location=Remote', true, '@every 1h')
+    ('ZipRecruiter', 'https://www.ziprecruiter.com/Jobs/Golang?location=Remote', true, '@every 1h'),
+    ('RealWorkFromAnywhere', 'https://www.realworkfromanywhere.com/remote-backend-jobs', true, '@every 1h')
 ON CONFLICT (board_name) DO NOTHING;
 
 -- 7. App Settings Table (key-value for runtime configuration)

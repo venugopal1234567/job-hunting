@@ -42,6 +42,7 @@ func NewScheduler(db *sql.DB) *Scheduler {
 		"indeed":               NewIndeedScraper(),
 		"naukri":               NewNaukriScraper(),
 		"ziprecruiter":         NewZipRecruiterScraper(),
+		"realworkfromanywhere": NewRealWorkFromAnywhereScraper(),
 	}
 
 	return &Scheduler{
