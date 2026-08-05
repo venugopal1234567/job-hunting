@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/chromedp/chromedp"
+	"net/url"
 )
 
 // GoogleJobsScraper scrapes job listings from Google Jobs search results (udm=8).
@@ -88,12 +89,17 @@ func (s *GoogleJobsScraper) scrapeWithSerpAPI(targetURL string, apiKey string) (
 			parts := strings.Split(u, "q=")
 			if len(parts) > 1 {
 				qPart := strings.Split(parts[1], "&")[0]
-				qVal = strings.ReplaceAll(qPart, "+", " ")
+				if decoded, err := url.QueryUnescape(qPart); err == nil {
+					qVal = decoded
+				} else {
+					qVal = strings.ReplaceAll(qPart, "+", " ")
+				}
 			}
 		}
 
 		// We call the SerpAPI endpoint directly via HTTP client
-		apiURL := fmt.Sprintf("https://serpapi.com/search.json?engine=google_jobs&q=%s&api_key=%s", strings.ReplaceAll(qVal, " ", "+"), apiKey)
+		apiURL := fmt.Sprintf("https://serpapi.com/search.json?engine=google_jobs&q=%s&api_key=%s", url.QueryEscape(qVal), apiKey)
+		log.Printf("[Scraper] GoogleJobs DEBUG: SerpAPI Query: '%s'", qVal)
 		req, err := http.NewRequest("GET", apiURL, nil)
 		if err != nil {
 			log.Printf("[Scraper] GoogleJobs: failed to create SerpAPI request: %v", err)
@@ -130,6 +136,7 @@ func (s *GoogleJobsScraper) scrapeWithSerpAPI(targetURL string, apiKey string) (
 			log.Printf("[Scraper] GoogleJobs: failed to decode SerpAPI JSON: %v", err)
 			continue
 		}
+		log.Printf("[Scraper] GoogleJobs DEBUG: SerpAPI returned %d jobs", len(results.JobsResults))
 
 		for _, item := range results.JobsResults {
 			title := item.Title
@@ -147,13 +154,18 @@ func (s *GoogleJobsScraper) scrapeWithSerpAPI(targetURL string, apiKey string) (
 				link = u
 			}
 
+			board := "googlejobs"
+			if strings.Contains(u, "board=googlejobscompanylist") {
+				board = "googlejobscompanylist"
+			}
+
 			job := models.Job{
 				Title:       title,
 				Company:     company,
 				Location:    location,
 				Country:     inferCountryGoogle(location, u),
 				SourceURL:   link,
-				SourceBoard: "googlejobs",
+				SourceBoard: board,
 				Description: desc,
 				PostedAt:    parseRelativeDate(item.DetectedExtensions.PostedAt),
 			}
@@ -224,22 +236,12 @@ const googleJobsExtractJS = `
   // Google Jobs renders results in li elements within the job listing container.
   // The exact selectors may change, so we try multiple strategies.
   
-  // Strategy 1: Look for job listing items in the main results area
   const jobCards = document.querySelectorAll('li.iFjolb, div.PwjeAc, li[data-entityid], div[jscontroller] li[class]');
 
   jobCards.forEach(card => {
     // Try to extract the title
     const titleEl = card.querySelector('div.BjJfJf, span.sH3zle, h3, div[role="heading"], .tNxQIb');
     let title = (titleEl ? titleEl.textContent : '').trim();
-    
-    // Try alternative title selectors
-    if (!title) {
-      const altTitle = card.querySelector('a div[class], [data-share-url] div:first-child');
-      title = (altTitle ? altTitle.textContent : '').trim();
-    }
-    
-    if (!title || title.length < 3) return;
-
     // Extract company name
     const companyEl = card.querySelector('div.vNEEBe, span.nJlDiv, .company, div[class*="company"]');
     let company = (companyEl ? companyEl.textContent : '').trim();
@@ -385,13 +387,18 @@ func parseGoogleJobs(jobsJSON, fallbackURL string) ([]models.Job, error) {
 			desc = fmt.Sprintf("%s at %s (%s)", title, company, location)
 		}
 
+		board := "googlejobs"
+		if strings.Contains(fallbackURL, "board=googlejobscompanylist") {
+			board = "googlejobscompanylist"
+		}
+
 		job := &models.Job{
 			Title:       title,
 			Company:     company,
 			Location:    location,
 			Country:     country,
 			SourceURL:   sourceURL,
-			SourceBoard: "googlejobs",
+			SourceBoard: board,
 			Description: desc,
 			PostedAt:    parseRelativeDate(e.PostedAt),
 		}

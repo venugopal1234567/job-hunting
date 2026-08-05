@@ -34,6 +34,7 @@ func NewScheduler(db *sql.DB) *Scheduler {
 		"flexboard":            NewFlexboardScraper(),
 		"vacancyglobalpro":     NewVacancyGlobalProScraper(),
 		"googlejobs":           NewGoogleJobsScraper(),
+		"googlejobscompanylist": NewGoogleJobsScraper(),
 		"remoterocketship":     NewRemoteRocketshipScraper(),
 		"linkedin":             NewLinkedInScraper(),
 		"glassdoor":            NewGlassdoorScraper(),
@@ -139,9 +140,9 @@ func (s *Scheduler) RunScraper(boardName, targetURL string) {
 	}
 
 	// Conserve SerpAPI limit: ensure googlejobs is run at most once every 4 hours (with a small safety buffer)
-	if key == "googlejobs" {
+	if key == "googlejobs" || key == "googlejobscompanylist" {
 		var lastRunAt sql.NullTime
-		err := s.db.QueryRow(`SELECT last_run_at FROM scraper_configs WHERE LOWER(REPLACE(board_name, ' ', '')) = 'googlejobs'`).Scan(&lastRunAt)
+		err := s.db.QueryRow(`SELECT last_run_at FROM scraper_configs WHERE LOWER(REPLACE(board_name, ' ', '')) = $1`, key).Scan(&lastRunAt)
 		if err == nil && lastRunAt.Valid && time.Since(lastRunAt.Time) < (3*time.Hour+50*time.Minute) {
 			log.Printf("[Scheduler] Skipping '%s' execution to conserve SerpAPI limits. Last run was at %v (%v ago)", boardName, lastRunAt.Time, time.Since(lastRunAt.Time))
 			return

@@ -114,7 +114,8 @@ VALUES
     ('Indeed', 'https://www.indeed.com/jobs?q=golang&l=Remote', true, '@every 1h'),
     ('Naukri', 'https://www.naukri.com/golang-jobs?wfhType=2', true, '@every 1h'),
     ('ZipRecruiter', 'https://www.ziprecruiter.com/Jobs/Golang?location=Remote', true, '@every 1h'),
-    ('RealWorkFromAnywhere', 'https://www.realworkfromanywhere.com/remote-backend-jobs', true, '@every 1h')
+    ('RealWorkFromAnywhere', 'https://www.realworkfromanywhere.com/remote-backend-jobs', true, '@every 1h'),
+    ('GoogleJobs Company List', 'https://www.google.com/search?q=golang+remote+(Cloudflare+OR+Monzo+OR+Crowdstrike+OR+Datadog+OR+GitHub+OR+%22Digital+Ocean%22+OR+Docker+OR+DropBox+OR+MongoDB+OR+SoundCloud+OR+Bumble+OR+Bitly)&board=googlejobscompanylist|https://www.google.com/search?q=golang+remote+(Shopify+OR+Twitch+OR+%22Delivery+Hero%22+OR+Deliveroo+OR+Stream+OR+Salesforce+OR+Microsoft+OR+%22Cockroach+DB%22+OR+Hashicorp+OR+Bird+OR+Jfrog+OR+fiverr+OR+thoughtworks)&board=googlejobscompanylist|https://www.google.com/search?q=golang+remote+(helloFresh+OR+Zalando+OR+VMWare+OR+Segment+OR+Pinterest+OR+Keybase+OR+Intel+OR+Ebay+OR+Modak+OR+ona)&board=googlejobscompanylist', true, '@every 4h')
 ON CONFLICT (board_name) DO NOTHING;
 
 -- 7. App Settings Table (key-value for runtime configuration)
