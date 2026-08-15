@@ -138,8 +138,8 @@ type ResumeVersion struct {
 	Source       string     `json:"source"`
 }
 
-// OllamaModel represents a locally pulled Ollama model
-type OllamaModel struct {
+// NvidiaModel represents an available NVIDIA AI model
+type NvidiaModel struct {
 	Name       string    `json:"name"`
 	Size       int64     `json:"size"`
 	ModifiedAt time.Time `json:"modified_at"`
@@ -148,8 +148,8 @@ type OllamaModel struct {
 
 // AISettings holds the current AI model configuration
 type AISettings struct {
-	ActiveModel    string        `json:"active_model"`
-	DefaultModel   string        `json:"default_model"`
-	AvailableModels []OllamaModel `json:"available_models"`
+	ActiveModel     string        `json:"active_model"`
+	DefaultModel    string        `json:"default_model"`
+	AvailableModels []NvidiaModel `json:"available_models"`
 }
 

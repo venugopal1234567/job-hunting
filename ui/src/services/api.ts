@@ -132,7 +132,7 @@ export const checkHealth = async (): Promise<boolean> => {
 
 // ─── AI Model Settings ─────────────────────────────────────────────────────────
 
-export interface OllamaModel {
+export interface NvidiaModel {
   name: string;
   size: number;
   modified_at: string;
@@ -142,7 +142,7 @@ export interface OllamaModel {
 export interface AISettings {
   active_model: string;
   default_model: string;
-  available_models: OllamaModel[];
+  available_models: NvidiaModel[];
 }
 
 export const getAISettings = async (): Promise<AISettings> => {
@@ -155,7 +155,7 @@ export const updateAISettings = async (activeModel: string): Promise<{ active_mo
   return data;
 };
 
-export const getAIModels = async (): Promise<OllamaModel[]> => {
-  const { data } = await api.get<{ models: OllamaModel[] }>('/ai/models');
+export const getAIModels = async (): Promise<NvidiaModel[]> => {
+  const { data } = await api.get<{ models: NvidiaModel[] }>('/ai/models');
   return data.models;
 };

@@ -9,7 +9,7 @@ import (
 type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
-	Ollama   OllamaConfig
+	Nvidia   NvidiaConfig
 }
 
 type ServerConfig struct {
@@ -24,9 +24,10 @@ type DatabaseConfig struct {
 	Password string
 }
 
-type OllamaConfig struct {
-	Host  string
-	Model string
+type NvidiaConfig struct {
+	APIKey  string
+	BaseURL string
+	Model   string
 }
 
 // Load reads configuration from environment variables with sensible defaults
@@ -42,9 +43,10 @@ func Load() *Config {
 			User:     getEnv("DB_USER", "hunter"),
 			Password: getEnv("DB_PASSWORD", "hunterpass"),
 		},
-		Ollama: OllamaConfig{
-			Host:  getEnv("OLLAMA_HOST", "http://localhost:11434"),
-			Model: getEnv("OLLAMA_MODEL", "rafw007/qwen35-claude-coder:4b"),
+		Nvidia: NvidiaConfig{
+			APIKey:  getEnv("NVIDIA_API_KEY", ""),
+			BaseURL: getEnv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1"),
+			Model:   getEnv("NVIDIA_MODEL", "z-ai/glm-5.2"),
 		},
 	}
 }

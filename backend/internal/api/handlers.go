@@ -36,7 +36,7 @@ func NewHandler(db *sql.DB, aiClient *ai.Client, scheduler *scraper.Scheduler) *
 func (h *Handler) getActiveModel() string {
 	var value string
 	err := h.db.QueryRow(`SELECT value FROM app_settings WHERE key = 'active_model'`).Scan(&value)
-	if err != nil || value == "" {
+	if err != nil || value == "" || (!strings.HasPrefix(value, "z-ai/") && !strings.HasPrefix(value, "openai/") && !strings.HasPrefix(value, "nvidia/") && !strings.HasPrefix(value, "meta/") && !strings.HasPrefix(value, "mistralai/")) {
 		return h.aiClient.DefaultModel()
 	}
 	return value
@@ -495,7 +495,8 @@ func (h *Handler) AnalyzeJob(c *gin.Context) {
 	activeModel := h.getActiveModel()
 	analysis, err := h.aiClient.AnalyzeATSMatch(&job, &res, activeModel)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "analysis failed"})
+		log.Printf("[Handler] AnalyzeATS error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "analysis failed: " + err.Error()})
 		return
 	}
 	analysis.JobID = jobID
@@ -856,14 +857,14 @@ func (h *Handler) GetVersionText(c *gin.Context) {
 }
 
 // ─────────────────────────────────────────────────────
-// GET /ai/models  — list locally available Ollama models
+// GET /ai/models  — list available NVIDIA models
 // ─────────────────────────────────────────────────────
 
 func (h *Handler) GetAIModels(c *gin.Context) {
 	availableModels, err := h.aiClient.ListModels()
 	if err != nil {
 		log.Printf("[Handler] GetAIModels error: %v", err)
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "failed to reach Ollama: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list models: " + err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"models": availableModels})
@@ -875,13 +876,12 @@ func (h *Handler) GetAIModels(c *gin.Context) {
 
 func (h *Handler) GetAISettings(c *gin.Context) {
 	activeModel := h.getActiveModel()
-
-	// Try to list available models (non-fatal if Ollama is down)
 	availableModels, _ := h.aiClient.ListModels()
+	defaultM := h.aiClient.DefaultModel()
 
 	c.JSON(http.StatusOK, models.AISettings{
 		ActiveModel:     activeModel,
-		DefaultModel:    h.aiClient.DefaultModel(),
+		DefaultModel:    defaultM,
 		AvailableModels: availableModels,
 	})
 }

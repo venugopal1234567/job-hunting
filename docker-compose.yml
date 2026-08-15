@@ -6,9 +6,9 @@ services:
     container_name: remotehunter-db
     restart: unless-stopped
     environment:
-      POSTGRES_DB: remotehunter
-      POSTGRES_USER: hunter
-      POSTGRES_PASSWORD: hunterpass
+      POSTGRES_DB: ${DB_NAME:-remotehunter}
+      POSTGRES_USER: ${DB_USER:-hunter}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-hunterpass}
     ports:
       - "5433:5432"
     volumes:
@@ -27,17 +27,20 @@ services:
       dockerfile: Dockerfile
     container_name: remotehunter-backend
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_NAME: remotehunter
-      DB_USER: hunter
-      DB_PASSWORD: hunterpass
-      # Ollama runs on your host machine - host.docker.internal routes to it from inside Docker
-      OLLAMA_HOST: http://host.docker.internal:11434
-      OLLAMA_MODEL: rafw007/qwen35-claude-coder:4b
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:-remotehunter}
+      DB_USER: ${DB_USER:-hunter}
+      DB_PASSWORD: ${DB_PASSWORD:-hunterpass}
+      # LLM Provider / NVIDIA configuration
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+      NVIDIA_BASE_URL: ${NVIDIA_BASE_URL:-https://integrate.api.nvidia.com/v1}
+      NVIDIA_MODEL: ${NVIDIA_MODEL:-z-ai/glm-5.2}
       SERVER_PORT: 8080
-      SERPAPI_API_KEY: "<API_KEY>"
+      SERPAPI_API_KEY: ${SERPAPI_API_KEY:-}
     ports:
       - "8080:8080"
     depends_on:

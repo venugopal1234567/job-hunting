@@ -103,24 +103,15 @@ func expandToWordBoundariesGo(text string, start, end int) (int, int) {
 }
 
 func TestATSOptimizationLoopNike(t *testing.T) {
-	host := os.Getenv("OLLAMA_HOST")
-	if host == "" {
-		host = "http://localhost:11434"
-	}
-	model := os.Getenv("OLLAMA_MODEL")
-	if model == "" {
-		model = "rafw007/qwen35-claude-coder:4b"
-	}
-
-	client := NewClient(host, model)
-
-	// Ping local Ollama to ensure it is running
-	resp, err := client.httpClient.Get(host + "/api/tags")
-	if err != nil {
-		t.Skipf("Skipping integration test: local Ollama is not running: %v", err)
+	apiKey := os.Getenv("NVIDIA_API_KEY")
+	if apiKey == "" {
+		t.Skip("Skipping integration test: NVIDIA_API_KEY not set")
 		return
 	}
-	resp.Body.Close()
+	baseURL := os.Getenv("NVIDIA_BASE_URL")
+	model := os.Getenv("NVIDIA_MODEL")
+
+	client := NewClient(apiKey, baseURL, model)
 
 	nikeJD := `Senior Software Engineer, ITC - Nike | Built In
 Other • Retail At NIKE, Inc., technology is laying the foundation for our digital transformation and direct-to-consumer strategy.

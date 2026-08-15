@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"remotehunter/internal/models"
@@ -11,138 +12,153 @@ import (
 	"time"
 )
 
-// Client is the Ollama API client
+// Client is the AI provider client for OpenAI-compatible endpoints (NVIDIA API)
 type Client struct {
-	host         string
-	defaultModel string
-	httpClient   *http.Client
+	nvidiaAPIKey  string
+	nvidiaBaseURL string
+	nvidiaModel   string
+	httpClient    *http.Client
 }
 
-// NewClient creates a new Ollama client
-func NewClient(host, model string) *Client {
+// NewClient creates a new AI client with NVIDIA configuration
+func NewClient(nvidiaAPIKey, nvidiaBaseURL, nvidiaModel string) *Client {
+	if nvidiaBaseURL == "" {
+		nvidiaBaseURL = "https://integrate.api.nvidia.com/v1"
+	}
+	if nvidiaModel == "" {
+		nvidiaModel = "z-ai/glm-5.2"
+	}
 	return &Client{
-		host:         host,
-		defaultModel: model,
+		nvidiaAPIKey:  nvidiaAPIKey,
+		nvidiaBaseURL: nvidiaBaseURL,
+		nvidiaModel:   nvidiaModel,
 		httpClient: &http.Client{
-			Timeout: 120 * time.Second,
+			Timeout: 300 * time.Second,
 		},
 	}
 }
 
-// DefaultModel returns the startup default model name
+// DefaultModel returns the default active model name
 func (c *Client) DefaultModel() string {
-	return c.defaultModel
-}
-
-type ollamaRequest struct {
-	Model   string                 `json:"model"`
-	Prompt  string                 `json:"prompt"`
-	Stream  bool                   `json:"stream"`
-	Format  string                 `json:"format"`
-	Options map[string]interface{} `json:"options,omitempty"`
-}
-
-type ollamaResponse struct {
-	Response string `json:"response"`
-	Thinking string `json:"thinking"`
-	Done     bool   `json:"done"`
-}
-
-// ollamaTagsResponse mirrors the /api/tags response from Ollama
-type ollamaTagsResponse struct {
-	Models []struct {
-		Name       string    `json:"name"`
-		ModifiedAt time.Time `json:"modified_at"`
-		Size       int64     `json:"size"`
-		Details    struct {
-			Family string `json:"family"`
-		} `json:"details"`
-	} `json:"models"`
-}
-
-// ListModels fetches all locally pulled models from Ollama
-func (c *Client) ListModels() ([]models.OllamaModel, error) {
-	resp, err := c.httpClient.Get(c.host + "/api/tags")
-	if err != nil {
-		return nil, fmt.Errorf("ollama unavailable: %w", err)
+	if c.nvidiaModel != "" {
+		return c.nvidiaModel
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("ollama returned status %d", resp.StatusCode)
-	}
-
-	var tagsResp ollamaTagsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tagsResp); err != nil {
-		return nil, fmt.Errorf("decode tags response: %w", err)
-	}
-
-	result := make([]models.OllamaModel, 0, len(tagsResp.Models))
-	for _, m := range tagsResp.Models {
-		result = append(result, models.OllamaModel{
-			Name:       m.Name,
-			Size:       m.Size,
-			ModifiedAt: m.ModifiedAt,
-			Family:     m.Details.Family,
-		})
-	}
-	return result, nil
+	return "z-ai/glm-5.2"
 }
 
-// resolveModel returns the override if non-empty, else the client default
+// ListModels returns available NVIDIA models for display
+func (c *Client) ListModels() ([]models.NvidiaModel, error) {
+	defaultM := c.DefaultModel()
+	return []models.NvidiaModel{
+		{
+			Name:   defaultM,
+			Size:   0,
+			Family: "nvidia",
+		},
+		{
+			Name:   "openai/gpt-oss-120b",
+			Size:   0,
+			Family: "nvidia",
+		},
+		{
+			Name:   "meta/llama-3.1-70b-instruct",
+			Size:   0,
+			Family: "nvidia",
+		},
+	}, nil
+}
+
+// resolveModel returns the override if non-empty, else default model
 func (c *Client) resolveModel(override string) string {
 	if override != "" {
 		return override
 	}
-	return c.defaultModel
+	return c.DefaultModel()
 }
 
-// AnalyzeATSMatch sends a structured prompt to the local Ollama model
-// and returns a structured ATS analysis report.
-// modelOverride is optional; pass "" to use the client's default model.
-func (c *Client) AnalyzeATSMatch(job *models.Job, resume *models.Resume, modelOverride string) (*models.ATSAnalysis, error) {
+// generateCompletion routes requests to OpenAI/NVIDIA API endpoint
+func (c *Client) generateCompletion(prompt string, modelOverride string, jsonFormat bool) (string, error) {
 	model := c.resolveModel(modelOverride)
-	prompt := buildATSPrompt(job, resume)
+	baseURL := c.nvidiaBaseURL
+	if baseURL == "" {
+		baseURL = "https://integrate.api.nvidia.com/v1"
+	}
+	endpoint := strings.TrimRight(baseURL, "/") + "/chat/completions"
 
-	reqBody, err := json.Marshal(ollamaRequest{
-		Model:  model,
-		Prompt: prompt,
-		Stream: false,
-		Format: "json",
-		Options: map[string]interface{}{
-			"num_ctx":     8192,
-			"num_predict": 4096,
-			"temperature": 0.0,
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
+	type openAIMessage struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}
+	type openAIReq struct {
+		Model          string          `json:"model"`
+		Messages       []openAIMessage `json:"messages"`
+		Temperature    float64         `json:"temperature"`
+		MaxTokens      int             `json:"max_tokens,omitempty"`
+		ResponseFormat interface{}     `json:"response_format,omitempty"`
 	}
 
-	resp, err := c.httpClient.Post(
-		c.host+"/api/generate",
-		"application/json",
-		bytes.NewReader(reqBody),
-	)
+	reqObj := openAIReq{
+		Model: model,
+		Messages: []openAIMessage{
+			{Role: "user", Content: prompt},
+		},
+		Temperature: 0.2,
+		MaxTokens:   4096,
+	}
+
+	reqBody, err := json.Marshal(reqObj)
 	if err != nil {
-		return nil, fmt.Errorf("ollama unavailable: %w", err)
+		return "", fmt.Errorf("marshal openai request: %w", err)
+	}
+
+	log.Printf("[AI Client] Calling NVIDIA API: %s with model: %s", endpoint, model)
+
+	httpReq, err := http.NewRequest("POST", endpoint, bytes.NewReader(reqBody))
+	if err != nil {
+		return "", fmt.Errorf("create openai http request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	if c.nvidiaAPIKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+c.nvidiaAPIKey)
+	}
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return "", fmt.Errorf("nvidia api request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("ollama returned status %d", resp.StatusCode)
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		log.Printf("[AI Client] NVIDIA API Error Status %d (endpoint %s, model %s): %s", resp.StatusCode, endpoint, model, string(bodyBytes))
+		return "", fmt.Errorf("nvidia api returned status %d for model '%s' at endpoint '%s': %s", resp.StatusCode, model, endpoint, string(bodyBytes))
 	}
 
-	var ollamaResp ollamaResponse
-	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
-		return nil, fmt.Errorf("decode ollama response: %w", err)
+	var openAIResp struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&openAIResp); err != nil {
+		return "", fmt.Errorf("decode nvidia response: %w", err)
 	}
 
-	rawResponse := ollamaResp.Response
-	if rawResponse == "" && ollamaResp.Thinking != "" {
-		rawResponse = ollamaResp.Thinking
+	if len(openAIResp.Choices) == 0 {
+		return "", fmt.Errorf("empty response choices from nvidia api")
 	}
+	return openAIResp.Choices[0].Message.Content, nil
+}
 
+// AnalyzeATSMatch sends a structured prompt to the AI provider
+// and returns a structured ATS analysis report.
+func (c *Client) AnalyzeATSMatch(job *models.Job, resume *models.Resume, modelOverride string) (*models.ATSAnalysis, error) {
+	prompt := buildATSPrompt(job, resume)
+	rawResponse, err := c.generateCompletion(prompt, modelOverride, true)
+	if err != nil {
+		return nil, err
+	}
 	return parseATSResponse(rawResponse, job, resume)
 }
 
@@ -241,52 +257,16 @@ func truncate(s string, max int) string {
 	return s[:max] + "..."
 }
 
-// ChatWithResume sends a conversational message with resume context to Ollama.
+// ChatWithResume sends a conversational message with resume context to AI provider.
 // modelOverride is optional; pass "" to use the client's default model.
 func (c *Client) ChatWithResume(req *models.ChatRequest, jobContext string, modelOverride string) (*models.ChatResponse, error) {
-	model := c.resolveModel(modelOverride)
 	prompt := buildChatPrompt(req, jobContext)
-
-	reqBody, err := json.Marshal(ollamaRequest{
-		Model:  model,
-		Prompt: prompt,
-		Stream: false,
-		Format: "json",
-		Options: map[string]interface{}{
-			"num_ctx":     8192,
-			"num_predict": 4096,
-		},
-	})
+	rawResponse, err := c.generateCompletion(prompt, modelOverride, true)
 	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
-	}
-
-	resp, err := c.httpClient.Post(
-		c.host+"/api/generate",
-		"application/json",
-		bytes.NewReader(reqBody),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("ollama unavailable for chat: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("ollama returned status %d for chat", resp.StatusCode)
-	}
-
-	var ollamaResp ollamaResponse
-	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
-		return nil, fmt.Errorf("decode ollama chat response: %w", err)
-	}
-
-	rawResponse := ollamaResp.Response
-	if rawResponse == "" && ollamaResp.Thinking != "" {
-		rawResponse = ollamaResp.Thinking
+		return nil, fmt.Errorf("chat completion failed: %w", err)
 	}
 
 	log.Printf("[AI] Raw chat response:\n%s", rawResponse)
-
 	return parseChatResponse(rawResponse), nil
 }
 

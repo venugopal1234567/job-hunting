@@ -3,7 +3,7 @@ import {
   Cpu, RefreshCw, CheckCircle2, Loader2, AlertTriangle,
   ChevronRight, Zap, HardDrive, Clock
 } from 'lucide-react';
-import { getAISettings, updateAISettings, getAIModels, OllamaModel, AISettings } from '../../services/api';
+import { getAISettings, updateAISettings, getAIModels, NvidiaModel, AISettings } from '../../services/api';
 
 const formatSize = (bytes: number): string => {
   if (bytes === 0) return '—';
@@ -25,24 +25,23 @@ const formatAge = (isoDate: string): string => {
 };
 
 const familyColor: Record<string, string> = {
-  qwen:   'bg-violet-500/15 text-violet-300 border-violet-500/20',
-  gemma:  'bg-blue-500/15 text-blue-300 border-blue-500/20',
-  llama:  'bg-orange-500/15 text-orange-300 border-orange-500/20',
-  mistral:'bg-emerald-500/15 text-emerald-300 border-emerald-500/20',
-  deepseek:'bg-pink-500/15 text-pink-300 border-pink-500/20',
-  phi:    'bg-yellow-500/15 text-yellow-300 border-yellow-500/20',
+  nvidia: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/20',
+  openai: 'bg-violet-500/15 text-violet-300 border-violet-500/20',
+  meta:   'bg-blue-500/15 text-blue-300 border-blue-500/20',
+  mistral:'bg-amber-500/15 text-amber-300 border-amber-500/20',
+  google: 'bg-pink-500/15 text-pink-300 border-pink-500/20',
 };
 
-const getFamilyClass = (model: OllamaModel): string => {
-  const family = (model.family || model.name.split(':')[0].split('/').pop() || '').toLowerCase();
+const getFamilyClass = (model: NvidiaModel): string => {
+  const family = (model.family || model.name.split(':')[0].split('/')[0] || '').toLowerCase();
   for (const [key, cls] of Object.entries(familyColor)) {
     if (family.includes(key)) return cls;
   }
   return 'bg-gray-500/15 text-gray-300 border-gray-500/20';
 };
 
-const getFamilyLabel = (model: OllamaModel): string => {
-  return (model.family || model.name.split(':')[0].split('/').pop() || 'local').toLowerCase();
+const getFamilyLabel = (model: NvidiaModel): string => {
+  return (model.family || model.name.split('/')[0] || 'nvidia').toLowerCase();
 };
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -76,7 +75,7 @@ const AIModelPicker: React.FC = () => {
       const models = await getAIModels();
       setSettings(prev => prev ? { ...prev, available_models: models } : prev);
     } catch {
-      setError('Failed to refresh model list from Ollama.');
+      setError('Failed to refresh model list from NVIDIA API.');
     } finally {
       setRefreshing(false);
     }
@@ -117,14 +116,14 @@ const AIModelPicker: React.FC = () => {
           </div>
           <div>
             <h3 className="text-sm font-semibold text-white">AI Model</h3>
-            <p className="text-[10px] text-gray-500 mt-0.5">Select which local Ollama model powers the resume coach</p>
+            <p className="text-[10px] text-gray-500 mt-0.5">Select which NVIDIA NIM cloud model powers the resume coach</p>
           </div>
         </div>
         <button
           onClick={handleRefreshModels}
           disabled={refreshing}
           className="btn-ghost text-[10px] flex items-center gap-1.5 px-2 py-1"
-          title="Refresh model list from Ollama"
+          title="Refresh model list from NVIDIA API"
           id="btn-refresh-models"
         >
           <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />

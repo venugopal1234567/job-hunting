@@ -4,7 +4,7 @@ import {
   Sparkles, ChevronDown, ChevronUp, RefreshCw, AlertCircle, Cpu
 } from 'lucide-react';
 import { ChatMessage, TrackedChange } from '../../types';
-import { getAISettings, OllamaModel } from '../../services/api';
+import { getAISettings, NvidiaModel } from '../../services/api';
 
 interface ChatPanelProps {
   messages: ChatMessage[];
@@ -39,7 +39,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   
   // Track wizard answers
   const [answers, setAnswers] = useState<Record<string, { answered: boolean; hasSkill: boolean; details: string }>>({});
-  const [availableModels, setAvailableModels] = useState<OllamaModel[]>([]);
+  const [availableModels, setAvailableModels] = useState<NvidiaModel[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>(activeModelProp || '');
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
 

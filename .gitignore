@@ -39,3 +39,4 @@ postgres_data/
 # AntiGravity / Agent scratch
 scratch/
 .agents/
+graphify-out/
