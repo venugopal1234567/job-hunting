@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { ATSAnalysis, Job, JobFilterParams, JobsResponse, Resume, ScraperConfig, Settings } from '../types';
+import { ATSAnalysis, Job, JobFilterParams, JobsResponse, Resume, ScraperConfig, Settings, StructuredResume } from '../types';
 
 const BASE_URL = '/api/v1';
 
@@ -70,7 +70,7 @@ export const saveResumeText = async (text: string): Promise<{ id: string; skills
   return data;
 };
 
-export const revertResumeText = async (): Promise<{ id: string; text: string; skills: string[]; message: string }> => {
+export const revertResumeText = async (): Promise<{ id: string; text: string; skills: string[]; html?: string; parsed?: StructuredResume; message: string }> => {
   const { data } = await api.post('/resume/revert');
   return data;
 };
@@ -80,7 +80,7 @@ export const chatWithResume = async (
   resumeText: string,
   jobId?: string,
   model?: string
-): Promise<{ message: string; proposed_edits?: any[]; gap_prompts?: any[]; full_resume_replacement?: string }> => {
+): Promise<{ message: string; proposed_edits?: any[]; gap_prompts?: any[]; full_resume_replacement?: string; structured_resume?: StructuredResume }> => {
   const { data } = await api.post('/resume/chat', {
     message,
     resume_text: resumeText,
@@ -108,6 +108,15 @@ export const saveResumeVersion = async (params: {
 export const getVersionText = async (versionId: string): Promise<string> => {
   const { data } = await api.get(`/resume/versions/${versionId}/text`);
   return data.text;
+};
+
+export const convertResumeToTemplate = async (
+  text?: string,
+  model?: string,
+  fitSinglePage?: boolean
+): Promise<{ success: boolean; html: string; parsed: StructuredResume }> => {
+  const { data } = await api.post('/resume/convert-template', { text, model, fit_single_page: fitSinglePage });
+  return data;
 };
 
 // ─── Settings ──────────────────────────────────────────────────────────────────

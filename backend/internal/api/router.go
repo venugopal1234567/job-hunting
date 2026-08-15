@@ -45,6 +45,7 @@ func SetupRouter(h *Handler) *gin.Engine {
 			res.GET("/versions", h.GetResumeVersions)
 			res.POST("/versions", h.SaveResumeVersion)
 			res.GET("/versions/:id/text", h.GetVersionText)
+			res.POST("/convert-template", h.ConvertResumeTemplate)
 		}
 
 		// Settings endpoints

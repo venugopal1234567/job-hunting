@@ -2,348 +2,580 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   Download, Save, Upload, Clock, PanelRight, PanelRightClose,
   FileText, AlertCircle, Loader2, CheckCircle2, GitBranch,
-  Sparkles, Cpu, Zap, ThumbsUp, ThumbsDown, CornerDownLeft, Check, X, RotateCcw
+  Sparkles, Cpu, Zap, ThumbsUp, ThumbsDown, CornerDownLeft, Check, X, RotateCcw,
+  Code, Copy, ExternalLink, FileCode, Wand2
 } from 'lucide-react';
 import { Job, ResumeVersion, TrackedChange } from '../../types';
-import { getResumeFullText, getActiveResume, analyzeJob, getResumeVersions, getVersionText, uploadResume } from '../../services/api';
+import { getResumeFullText, getActiveResume, analyzeJob, getResumeVersions, getVersionText, uploadResume, convertResumeToTemplate } from '../../services/api';
 import { useResumeEditor } from '../../hooks/useResumeEditor';
 import ChatPanel from './ChatPanel';
 import ATSScoreBar from './ATSScoreBar';
 import AppliedDialog from './AppliedDialog';
 import ResumeUploader from './ResumeUploader';
 
-// Helper to parse plain text resume into highly styled, beautiful HTML representation
+// Helper to parse plain text resume into highly styled, beautiful HTML representation matching user's template
 // Build a complete, self-contained HTML doc for high-fidelity PDF printing
-const generatePrintHTML = (text: string): string => {
+const generatePrintHTML = (text: string, fitToPage: boolean = false, autoHighlight: boolean = false): string => {
   if (!text) return '';
 
-  // ── Pre-process: merge isolated bullet chars with the next text line ────────
-  const rawLines = text.split('\n');
-  const mergedLines: string[] = [];
-  for (let i = 0; i < rawLines.length; i++) {
-    const t = rawLines[i].trim().replace(/[\u200b\u200c\u200d\ufeff]/g, '');
-    const isBulletOnly = t === '•' || t === '-' || t === '*' || t === '▪' || t === '◦';
-    if (isBulletOnly && i + 1 < rawLines.length) {
-      let next = i + 1;
-      while (next < rawLines.length && rawLines[next].trim() === '') next++;
-      if (next < rawLines.length) {
-        mergedLines.push('• ' + rawLines[next].trim());
-        i = next;
-        continue;
-      }
-    }
-    mergedLines.push(rawLines[i]);
+  const parsed = parseResumeStructure(text);
+
+  let bodyHtml = `
+    <header>
+        <h1>${escapeHTML(parsed.name || 'Venugopal Hegde')}</h1>
+        <div class="contact-info">
+            ${parsed.title ? `<strong>${escapeHTML(parsed.title)}</strong><br>` : ''}
+            ${parsed.contactItems.map(item => `<span>${escapeHTML(item)}</span>`).join(' | ')}
+        </div>
+    </header>
+  `;
+
+  // Render sections in exact required order: Summary -> Work Experiences -> Educations -> Skills -> Any remaining
+  if (parsed.summary) {
+    bodyHtml += `
+    <section>
+        <h2>PROFESSIONAL SUMMARY</h2>
+        <p>${formatTextWithHighlights(parsed.summary, autoHighlight)}</p>
+    </section>`;
   }
 
-  // ── Render lines to professional HTML body ───────────────────────────────────
-  const dateRx = /((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d{4})[\s\-–]+(?:Present|\d{4}|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))\s*$/i;
-  const sectionRx = /^(CAREER SUMMARY|SUMMARY|TECHNICAL SKILLS|SKILLS|PROFESSIONAL EXPERIENCE|EXPERIENCE|WORK EXPERIENCE|PROJECTS|EDUCATION|CERTIFICATIONS|ORGANIZATIONS|ADDITIONAL INFORMATION|LANGUAGES)$/i;
-
-  let body = '';
-  let pastHeader = false;
-
-  for (let i = 0; i < mergedLines.length; i++) {
-    const line = mergedLines[i];
-    const t = line.trim();
-    if (!t) continue;
-
-    // Section header
-    const isSection = sectionRx.test(t) ||
-      (t.length < 40 && t === t.toUpperCase() && !/[@|+]/.test(t) && !/^[0-9\-–\s|/]+$/.test(t) && t.length > 3);
-
-    if (isSection) {
-      pastHeader = true;
-      body += `<h2>${t}</h2>\n`;
-      continue;
-    }
-
-    // Name / title / contact (before first section)
-    if (!pastHeader) {
-      if (i === 0) {
-        body += `<h1>${t}</h1>\n`;
-      } else if (/[@|+]/.test(t) || /\d{5,}/.test(t)) {
-        body += `<p class="contact">${t}</p>\n`;
-      } else {
-        body += `<p class="subtitle">${t}</p>\n`;
-      }
-      continue;
-    }
-
-    // Job title + date on same line
-    const dm = t.match(dateRx);
-    if (dm && t.length < 140) {
-      const date = dm[1];
-      const left = t.replace(dateRx, '').replace(/[\s|–—-]+$/, '').trim();
-      if (left) {
-        body += `<div class="job-row"><span class="job-title">${left}</span><span class="job-date">${date}</span></div>\n`;
-        continue;
-      }
-    }
-
-    // Bullet
-    const isBullet = /^[•\-*▪◦]/.test(t);
-    if (isBullet) {
-      const txt = t.replace(/^[•\-*▪◦\s\u200b]+/, '').trim();
-      body += `<p class="bullet">• ${txt}</p>\n`;
-      continue;
-    }
-
-    // Sub-headers (company | location, role titles)
-    if ((t.includes('|') || t.includes(' – ') || t.includes(' - ')) && t.length < 120) {
-      body += `<p class="company">${t}</p>\n`;
-      continue;
-    }
-
-    // Regular paragraph
-    body += `<p class="body-text">${t}</p>\n`;
+  if (parsed.workExperience.length > 0) {
+    bodyHtml += `
+    <section>
+        <h2>WORK EXPERIENCES</h2>
+        ${parsed.workExperience.map(job => `
+            <div class="job">
+                <div class="job-header">
+                    <span class="job-title">${escapeHTML(job.title)}</span>
+                    <span class="job-date">${escapeHTML(job.date)}</span>
+                </div>
+                ${(job.company || job.location) ? `
+                <div class="company-info">
+                    <span>${escapeHTML(job.company)}</span>
+                    <span>${escapeHTML(job.location)}</span>
+                </div>` : ''}
+                <ul>
+                    ${job.bullets.map(b => `<li>${formatTextWithHighlights(b, autoHighlight)}</li>`).join('')}
+                </ul>
+                ${job.techStack ? `<div class="tech-stack">Technologies / Skills Used : ${formatTextWithHighlights(job.techStack, autoHighlight)}</div>` : ''}
+            </div>
+        `).join('')}
+    </section>`;
   }
+
+  if (parsed.education.length > 0) {
+    bodyHtml += `
+    <section>
+        <h2>EDUCATIONS</h2>
+        ${parsed.education.map(edu => `
+            <div class="education-block">
+                <div class="job-header">
+                    <span class="job-title">${escapeHTML(edu.institution)}</span>
+                    <span class="job-date">${escapeHTML(edu.date)}</span>
+                </div>
+                <div>${formatTextWithHighlights(edu.degree, autoHighlight)}</div>
+            </div>
+        `).join('')}
+    </section>`;
+  }
+
+  if (parsed.skills.length > 0) {
+    bodyHtml += `
+    <section>
+        <h2>SKILLS</h2>
+        <ul class="skills-list">
+            ${parsed.skills.map(skill => `
+                <li><span class="skill-category">${escapeHTML(skill.category)} :</span> ${formatTextWithHighlights(skill.items, autoHighlight)}</li>
+            `).join('')}
+        </ul>
+    </section>`;
+  }
+
+  // Render any additional custom sections (Certifications, Projects, etc.)
+  parsed.customSections.forEach(sec => {
+    bodyHtml += `
+    <section>
+        <h2>${escapeHTML(sec.title)}</h2>
+        ${sec.content.map(c => `<p>${formatTextWithHighlights(c, autoHighlight)}</p>`).join('')}
+    </section>`;
+  });
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Resume</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Calibri:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    @page {
-      size: letter;
-      margin: 0.6in 0.65in;
-    }
-
-    body {
-      font-family: 'Calibri', 'Inter', 'Georgia', sans-serif;
-      font-size: 10.5pt;
-      color: #1a1a1a;
-      background: #fff;
-      line-height: 1.35;
-    }
-
-    h1 {
-      font-family: inherit;
-      font-size: 20pt;
-      font-weight: 700;
-      color: #1a1a2e;
-      text-align: center;
-      margin-bottom: 2pt;
-      letter-spacing: 0.01em;
-    }
-
-    .subtitle {
-      font-size: 10.5pt;
-      font-weight: 600;
-      color: #444;
-      text-align: center;
-      margin-bottom: 2pt;
-    }
-
-    .contact {
-      font-size: 9.5pt;
-      color: #333;
-      text-align: center;
-      margin-bottom: 6pt;
-    }
-
-    h2 {
-      font-family: inherit;
-      font-size: 10.5pt;
-      font-weight: 700;
-      color: #1a1a2e;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      border-bottom: 0.75pt solid #aaa;
-      margin-top: 10pt;
-      margin-bottom: 4pt;
-      padding-bottom: 1.5pt;
-    }
-
-    .job-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      margin-top: 5pt;
-      margin-bottom: 1.5pt;
-    }
-    .job-title {
-      font-size: 10.5pt;
-      font-weight: 700;
-      color: #1a1a2e;
-    }
-    .job-date {
-      font-size: 9.5pt;
-      font-weight: 400;
-      color: #555;
-    }
-
-    .company {
-      font-size: 10.5pt;
-      font-weight: 600;
-      color: #1a1a2e;
-      margin-bottom: 2pt;
-    }
-
-    .bullet {
-      font-size: 10pt;
-      color: #1a1a1a;
-      line-height: 1.35;
-      padding-left: 14pt;
-      text-indent: -14pt;
-      text-align: justify;
-      margin-bottom: 2pt;
-    }
-
-    .body-text {
-      font-size: 10pt;
-      color: #1a1a1a;
-      line-height: 1.4;
-      text-align: justify;
-      margin-bottom: 2pt;
-    }
-
-    @media print {
-      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      h2 { border-bottom-color: #999; }
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${escapeHTML(parsed.name || 'Resume')}</title>
+    <style>
+        @page {
+            size: letter;
+            margin: ${fitToPage ? '20px 25px' : '40px 30px'};
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: ${fitToPage ? '1.35' : '1.5'};
+            color: #333;
+            max-width: 850px;
+            margin: 0 auto;
+            padding: ${fitToPage ? '15px 15px' : '30px 20px'};
+            font-size: ${fitToPage ? '9.5pt' : '10.5pt'};
+            background: #fff;
+        }
+        header {
+            text-align: left;
+            margin-bottom: ${fitToPage ? '10px' : '18px'};
+            border-bottom: 2px solid #2c3e50;
+            padding-bottom: ${fitToPage ? '6px' : '12px'};
+        }
+        h1 {
+            font-size: ${fitToPage ? '1.8em' : '2.2em'};
+            color: #2c3e50;
+            margin: 0 0 4px 0;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            text-align: left;
+        }
+        .contact-info {
+            font-size: ${fitToPage ? '0.88em' : '0.95em'};
+            color: #555;
+            text-align: left;
+        }
+        .contact-info span {
+            margin: 0 6px;
+        }
+        h2 {
+            color: #2c3e50;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 3px;
+            margin-top: ${fitToPage ? '8px' : '18px'};
+            margin-bottom: ${fitToPage ? '4px' : '10px'};
+            font-size: ${fitToPage ? '1.05em' : '1.2em'};
+            text-transform: uppercase;
+            text-align: left;
+        }
+        .job {
+            margin-bottom: ${fitToPage ? '8px' : '16px'};
+        }
+        .job-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 3px;
+        }
+        .job-title {
+            font-size: 1.05em;
+            font-weight: bold;
+            color: #34495e;
+        }
+        .job-date {
+            font-weight: bold;
+            color: #7f8c8d;
+            font-size: 0.95em;
+        }
+        .company-info {
+            display: flex;
+            justify-content: space-between;
+            font-style: italic;
+            color: #555;
+            margin-bottom: 6px;
+            font-size: 0.95em;
+        }
+        ul {
+            margin-top: 0;
+            margin-bottom: 4px;
+            padding-left: 18px;
+        }
+        li {
+            margin-bottom: ${fitToPage ? '2px' : '5px'};
+            text-align: left;
+        }
+        .tech-stack {
+            font-weight: bold;
+            font-size: 0.88em;
+            color: #2c3e50;
+            margin-top: 4px;
+        }
+        .skills-list {
+            list-style-type: none;
+            padding: 0;
+        }
+        .skills-list li {
+            margin-bottom: ${fitToPage ? '4px' : '8px'};
+        }
+        .skill-category {
+            font-weight: bold;
+            color: #2c3e50;
+            width: 210px;
+            display: inline-block;
+        }
+        .education-block {
+            margin-bottom: ${fitToPage ? '8px' : '12px'};
+        }
+        .kw-highlight {
+            font-weight: 700;
+            color: #1e3a8a;
+            background-color: rgba(59, 130, 246, 0.12);
+            padding: 0px 3px;
+            border-radius: 3px;
+        }
+        @media print {
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+    </style>
 </head>
 <body>
-${body}
+${bodyHtml}
 </body>
 </html>`;
 };
 
+// Helper utilities for parser & HTML formatting
+function escapeHTML(str: string): string {
+  return str.replace(/[&<>'"]/g, 
+    tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+  );
+}
 
-const formatResumeTextToHTML = (text: string): string => {
-  if (!text) return '';
+const IMPORTANT_KEYWORDS = [
+  'Go', 'Golang', 'Kubernetes', 'Docker', 'Google Pub/Sub', 'Pub/Sub', 'Redis', 'PostgreSQL',
+  'DynamoDB', 'MongoDB', 'NATS', 'Helm', 'AWS', 'Azure', 'GCP', 'gRPC', 'Python', 'TypeScript',
+  'SQL', 'Shell Scripting', 'Platform Engineering', 'Test-Driven Development', 'TDD', 'System Design',
+  'Agile', 'Scrum', 'Agile/Scrum', 'Remote Collaboration', 'CI/CD Automation', 'CI/CD', 'REST API',
+  'WebSocket', 'Mocha', 'SLB OSDU Data Platform', 'OSDU'
+];
 
-  // Step 1: Pre-process lines to merge separate bullet characters with their text
-  const rawLines = text.split('\n');
+function formatTextWithHighlights(text: string, highlight: boolean, customKeywords?: string[]): string {
+  let escaped = escapeHTML(text);
+  if (!highlight) return escaped;
+
+  const keywordsToUse = (customKeywords && customKeywords.length > 0) 
+    ? Array.from(new Set([...customKeywords, ...IMPORTANT_KEYWORDS])) 
+    : IMPORTANT_KEYWORDS;
+
+  // Highlight key technologies & terms
+  keywordsToUse.forEach(kw => {
+    if (!kw || kw.trim().length < 2) return;
+    const escKw = escapeHTML(kw.trim());
+    const rx = new RegExp(`\\b(${escKw.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')})\\b`, 'gi');
+    escaped = escaped.replace(rx, `<span class="kw-highlight">$1</span>`);
+  });
+  return escaped;
+}
+
+interface ParsedJob {
+  title: string;
+  date: string;
+  company: string;
+  location: string;
+  bullets: string[];
+  techStack?: string;
+}
+
+interface ParsedEdu {
+  institution: string;
+  date: string;
+  degree: string;
+}
+
+interface ParsedSkill {
+  category: string;
+  items: string;
+}
+
+interface ParsedCustomSection {
+  title: string;
+  content: string[];
+}
+
+interface ParsedResume {
+  name: string;
+  title: string;
+  contactItems: string[];
+  summary: string;
+  skills: ParsedSkill[];
+  workExperience: ParsedJob[];
+  education: ParsedEdu[];
+  customSections: ParsedCustomSection[];
+}
+
+function convertStructuredToText(sr: any): string {
+  if (!sr) return '';
   const lines: string[] = [];
 
-  for (let i = 0; i < rawLines.length; i++) {
-    const currentLine = rawLines[i];
-    const currentTrimmed = currentLine.trim();
-
-    // Clean zero-width chars and spaces to identify pure bullet indicators
-    const cleaned = currentTrimmed.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
-    const isBulletChar = cleaned === '•' || cleaned === '-' || cleaned === '*' || cleaned === '▪' || cleaned === '◦';
-
-    if (isBulletChar && i + 1 < rawLines.length) {
-      // Merge with the next non-empty line
-      let nextIdx = i + 1;
-      while (nextIdx < rawLines.length && rawLines[nextIdx].trim() === '') {
-        nextIdx++;
-      }
-      if (nextIdx < rawLines.length) {
-        // Merge the bullet and text
-        lines.push('• ' + rawLines[nextIdx].trim());
-        i = nextIdx; // Skip to the merged line
-        continue;
-      }
-    }
-    lines.push(currentLine);
+  if (sr.name) lines.push(sr.name.trim());
+  if (sr.title) lines.push(sr.title.trim());
+  if (sr.contact_items && sr.contact_items.length > 0) {
+    lines.push(sr.contact_items.join(' | '));
+  } else if (sr.contactItems && sr.contactItems.length > 0) {
+    lines.push(sr.contactItems.join(' | '));
   }
 
-  // Step 2: Format lines as styled HTML elements
-  let htmlLines: string[] = [];
-  let foundFirstHeader = false;
+  lines.push('');
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmed = line.trim();
+  if (sr.summary) {
+    lines.push('PROFESSIONAL SUMMARY');
+    lines.push(sr.summary.trim());
+    lines.push('');
+  }
 
-    if (trimmed === '') {
-      // Avoid consecutive empty spacers
-      if (i > 0 && lines[i - 1].trim() === '') {
-        continue;
+  const work = sr.work_experience || sr.workExperience || [];
+  if (work.length > 0) {
+    lines.push('WORK EXPERIENCES');
+    work.forEach((job: any) => {
+      const titleLine = `${job.title || ''} ${job.date ? job.date : ''}`.trim();
+      if (titleLine) lines.push(titleLine);
+      if (job.company || job.location) {
+        const compLine = [job.company, job.location].filter(Boolean).join(' | ');
+        lines.push(compLine);
       }
-      htmlLines.push('<div style="height: 5px;"></div>');
-      continue;
-    }
+      if (job.bullets && job.bullets.length > 0) {
+        job.bullets.forEach((b: string) => {
+          if (b && b.trim()) lines.push(`• ${b.trim()}`);
+        });
+      }
+      if (job.tech_stack || job.techStack) {
+        lines.push(`Technologies / Skills Used : ${job.tech_stack || job.techStack}`);
+      }
+      lines.push('');
+    });
+  }
 
-    // Check if it's a major section header
-    const isSectionHeader = /^(CAREER SUMMARY|SUMMARY|TECHNICAL SKILLS|SKILLS|PROFESSIONAL EXPERIENCE|EXPERIENCE|WORK EXPERIENCE|PROJECTS|EDUCATION|CERTIFICATIONS|ORGANIZATIONS|ADDITIONAL INFORMATION|LANGUAGES)$/i.test(trimmed)
-      || (trimmed.length < 40 && trimmed === trimmed.toUpperCase() && !trimmed.includes('|') && !trimmed.includes('@') && !trimmed.includes('+') && !/^[0-9\-–\s|/]+$/.test(trimmed) && trimmed.length > 3);
+  const edu = sr.education || [];
+  if (edu.length > 0) {
+    lines.push('EDUCATIONS');
+    edu.forEach((e: any) => {
+      const instLine = `${e.institution || ''} ${e.date ? e.date : ''}`.trim();
+      if (instLine) lines.push(instLine);
+      if (e.degree) lines.push(e.degree.trim());
+      lines.push('');
+    });
+  }
+
+  const skills = sr.skills || [];
+  if (skills.length > 0) {
+    lines.push('SKILLS');
+    skills.forEach((s: any) => {
+      if (s.category && s.items) {
+        lines.push(`${s.category.trim()} : ${s.items.trim()}`);
+      }
+    });
+    lines.push('');
+  }
+
+  return lines.join('\n').trim();
+}
+
+function parseResumeStructure(text: string): ParsedResume {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const result: ParsedResume = {
+    name: '',
+    title: '',
+    contactItems: [],
+    summary: '',
+    skills: [],
+    workExperience: [],
+    education: [],
+    customSections: []
+  };
+
+  if (lines.length === 0) return result;
+
+  // Header extraction
+  result.name = lines[0].replace(/\[cite:\s*\d+\]/g, '');
+  let idx = 1;
+  while (idx < lines.length) {
+    const line = lines[idx].replace(/\[cite:\s*\d+\]/g, '');
+    const isSectionHeader = /^(PROFESSIONAL SUMMARY|SUMMARY|WORK EXPERIENCES|EXPERIENCE|SKILLS|EDUCATIONS|EDUCATION|PROJECTS|CERTIFICATIONS)$/i.test(line);
+    if (isSectionHeader) break;
+
+    if (!result.title && !/[@|+|\d{5,}]/.test(line)) {
+      result.title = line;
+    } else {
+      const parts = line.split(/[|•]/).map(p => p.trim()).filter(Boolean);
+      parts.forEach(p => result.contactItems.push(p));
+    }
+    idx++;
+  }
+
+  // Parse Sections
+  let currentSection = '';
+  let currentJob: ParsedJob | null = null;
+  let currentEdu: ParsedEdu | null = null;
+
+  for (; idx < lines.length; idx++) {
+    const rawLine = lines[idx];
+    const line = rawLine.replace(/\[cite:\s*\d+\]/g, '').trim();
+    if (!line) continue;
+
+    const isSectionHeader = /^(PROFESSIONAL SUMMARY|SUMMARY|WORK EXPERIENCES|WORK EXPERIENCE|EXPERIENCE|SKILLS|TECHNICAL SKILLS|EDUCATIONS|EDUCATION|PROJECTS|CERTIFICATIONS)$/i.test(line)
+      || (line.length < 40 && line === line.toUpperCase() && !line.includes('|') && !line.includes('@') && !line.includes('+') && line.length > 3);
 
     if (isSectionHeader) {
-      foundFirstHeader = true;
-      htmlLines.push(
-        `<h2 style="font-size: 11.5px; font-weight: 700; color: #1e3a8a; border-bottom: 0.75px solid #cbd5e1; margin-top: 15px; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.05em; padding-bottom: 2px; font-family: 'Inter', sans-serif;">${trimmed}</h2>`
-      );
+      if (currentJob) { result.workExperience.push(currentJob); currentJob = null; }
+      if (currentEdu) { result.education.push(currentEdu); currentEdu = null; }
+
+      if (/SUMMARY/i.test(line)) currentSection = 'SUMMARY';
+      else if (/SKILL/i.test(line)) currentSection = 'SKILLS';
+      else if (/WORK|EXPERIENCE/i.test(line)) currentSection = 'WORK';
+      else if (/EDU/i.test(line)) currentSection = 'EDUCATION';
+      else {
+        currentSection = line;
+        result.customSections.push({ title: line, content: [] });
+      }
       continue;
     }
 
-    // Header section before the first section header (Name, Title, Contact)
-    if (!foundFirstHeader) {
-      if (i === 0 || (i === 1 && lines[0].trim() === '')) {
-        // Candidate Name
-        htmlLines.push(
-          `<h1 style="font-size: 20px; font-weight: 700; color: #1e3a8a; text-align: center; margin-bottom: 3px; letter-spacing: -0.01em; font-family: 'Inter', sans-serif;">${trimmed}</h1>`
-        );
-      } else if (trimmed.includes('@') || trimmed.includes('|') || trimmed.includes('+') || /\d{5,}/.test(trimmed)) {
-        // Contact details
-        htmlLines.push(
-          `<p style="font-size: 10px; color: #334155; text-align: center; margin-bottom: 3px; line-height: 1.3; font-family: 'Inter', sans-serif;">${trimmed}</p>`
-        );
+    if (currentSection === 'SUMMARY') {
+      result.summary = result.summary ? result.summary + ' ' + line : line;
+    } else if (currentSection === 'SKILLS') {
+      if (line.includes(':')) {
+        const [cat, items] = line.split(':', 2);
+        result.skills.push({ category: cat.trim(), items: items.trim() });
       } else {
-        // Subtitle / Job Title
-        htmlLines.push(
-          `<p style="font-size: 12px; font-weight: 600; color: #475569; text-align: center; margin-bottom: 8px; font-family: 'Inter', sans-serif;">${trimmed}</p>`
-        );
+        const isBullet = /^[•\-*▪◦]/.test(line);
+        const txt = line.replace(/^[•\-*▪◦\s]+/, '').trim();
+        result.skills.push({ category: 'Key Skills', items: txt });
       }
-      continue;
-    }
+    } else if (currentSection === 'WORK') {
+      const dateRx = /((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d{4})[-–\s\u2013\u2014]+(?:Present|\d{4}|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))\s*$/i;
+      const dm = line.match(dateRx);
 
-    // Check if the line contains a date range (e.g. Jun 2023 - Present, 2015 - 2019, Jun 2021 - May 2023)
-    const dateRegex = /((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d{4})[-–\s\u2013\u2014]+(?:Present|\d{4}|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))\s*$/i;
-    const hasDateRange = dateRegex.test(trimmed);
-
-    if (hasDateRange && trimmed.length < 120) {
-      const match = trimmed.match(dateRegex);
-      if (match) {
-        const dateText = match[1];
-        const leftText = trimmed.replace(dateRegex, '').trim().replace(/[\s|–—-]+$/, '').trim();
-        
-        if (leftText) {
-          htmlLines.push(
-            `<div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; color: #1e293b; margin-top: 6px; margin-bottom: 2px; font-family: 'Inter', sans-serif;">` +
-              `<span>${leftText}</span>` +
-              `<span style="font-weight: 600; color: #475569;">${dateText}</span>` +
-            `</div>`
-          );
-          continue;
+      if (dm && line.length < 130) {
+        if (currentJob) { result.workExperience.push(currentJob); }
+        const date = dm[1];
+        const title = line.replace(dateRx, '').trim().replace(/[\s|–—-]+$/, '').trim();
+        currentJob = { title, date, company: '', location: '', bullets: [] };
+      } else if (line.toLowerCase().startsWith('technologies') || line.toLowerCase().startsWith('technologies / skills used')) {
+        if (currentJob) {
+          const tech = line.replace(/^technologies\s*\/\s*skills\s*used\s*:\s*/i, '').replace(/^technologies\s*used\s*:\s*/i, '').trim();
+          currentJob.techStack = tech;
         }
+      } else if ((line.includes('|') || line.includes(' - ') || line.includes('–')) && currentJob && !currentJob.company) {
+        const parts = line.split(/[|–-]/).map(p => p.trim()).filter(Boolean);
+        if (parts.length >= 2) {
+          currentJob.company = parts[0];
+          currentJob.location = parts.slice(1).join(' - ');
+        } else {
+          currentJob.company = line;
+        }
+      } else if (currentJob) {
+        const isBullet = /^[•\-*▪◦]/.test(line);
+        const txt = line.replace(/^[•\-*▪◦\s]+/, '').trim();
+        currentJob.bullets.push(txt);
       }
-    }
-
-    // Check if it's a bullet point line
-    const isBullet = trimmed.startsWith('•') || trimmed.startsWith('-') || trimmed.startsWith('*') || trimmed.startsWith('▪') || trimmed.startsWith('◦');
-    if (isBullet) {
-      // Strips ALL leading bullets, zero-width chars, and spaces to prevent double bullets
-      const cleanBulletText = trimmed.replace(/^[•\-*▪◦\s\u200b\ufeff]+/g, '').trim();
-      htmlLines.push(
-        `<p style="font-size: 11px; line-height: 1.45; color: #334155; margin-bottom: 2.5px; padding-left: 14px; text-indent: -14px; text-align: justify; font-family: 'Inter', sans-serif;">• ${cleanBulletText}</p>`
-      );
-      continue;
-    }
-
-    // Check if it's a professional experience subheader (like company name)
-    const isSubHeader = trimmed.includes('|') || trimmed.includes(' - ') || trimmed.includes('–') || /\b(19|20)\d{2}\b/.test(trimmed);
-    if (isSubHeader && trimmed.length < 120) {
-      htmlLines.push(
-        `<p style="font-size: 11px; font-weight: 700; color: #1e3a8a; margin-top: 8px; margin-bottom: 2px; font-family: 'Inter', sans-serif;">${trimmed}</p>`
-      );
+    } else if (currentSection === 'EDUCATION') {
+      const dateRx = /((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d{4})[-–\s\u2013\u2014]+(?:Present|\d{4}|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))\s*$/i;
+      const dm = line.match(dateRx);
+      if (dm) {
+        if (currentEdu) { result.education.push(currentEdu); }
+        const date = dm[1];
+        const inst = line.replace(dateRx, '').trim().replace(/[\s|–—-]+$/, '').trim();
+        currentEdu = { institution: inst, date, degree: '' };
+      } else if (currentEdu) {
+        currentEdu.degree = currentEdu.degree ? currentEdu.degree + ' ' + line : line;
+      } else {
+        result.education.push({ institution: line, date: '', degree: '' });
+      }
     } else {
-      // General body paragraph
-      htmlLines.push(
-        `<p style="font-size: 11px; line-height: 1.45; color: #334155; margin-bottom: 3px; text-align: justify; font-family: 'Inter', sans-serif;">${trimmed}</p>`
-      );
+      const cust = result.customSections.find(s => s.title === currentSection);
+      if (cust) cust.content.push(line);
     }
   }
 
-  return htmlLines.join('\n');
+  if (currentJob) result.workExperience.push(currentJob);
+  if (currentEdu) result.education.push(currentEdu);
+
+  return result;
+}
+
+const renderEditorCanvasHTML = (text: string, fitToPage: boolean = false, autoHighlight: boolean = false): string => {
+  if (!text) return '';
+  const parsed = parseResumeStructure(text);
+
+  let bodyHtml = `
+    <header>
+        <h1>${escapeHTML(parsed.name || 'Venugopal Hegde')}</h1>
+        <div class="contact-info">
+            ${parsed.title ? `<strong>${escapeHTML(parsed.title)}</strong><br>` : ''}
+            ${parsed.contactItems.map(item => `<span>${escapeHTML(item)}</span>`).join(' | ')}
+        </div>
+    </header>
+  `;
+
+  if (parsed.summary) {
+    bodyHtml += `
+    <section>
+        <h2>PROFESSIONAL SUMMARY</h2>
+        <p>${formatTextWithHighlights(parsed.summary, autoHighlight)}</p>
+    </section>`;
+  }
+
+  if (parsed.workExperience.length > 0) {
+    bodyHtml += `
+    <section>
+        <h2>WORK EXPERIENCES</h2>
+        ${parsed.workExperience.map(job => `
+            <div class="job">
+                <div class="job-header">
+                    <span class="job-title">${escapeHTML(job.title)}</span>
+                    <span class="job-date">${escapeHTML(job.date)}</span>
+                </div>
+                ${(job.company || job.location) ? `
+                <div class="company-info">
+                    <span>${escapeHTML(job.company)}</span>
+                    <span>${escapeHTML(job.location)}</span>
+                </div>` : ''}
+                <ul>
+                    ${job.bullets.map(b => `<li>${formatTextWithHighlights(b, autoHighlight)}</li>`).join('')}
+                </ul>
+                ${job.techStack ? `<div class="tech-stack">Technologies / Skills Used : ${formatTextWithHighlights(job.techStack, autoHighlight)}</div>` : ''}
+            </div>
+        `).join('')}
+    </section>`;
+  }
+
+  if (parsed.education.length > 0) {
+    bodyHtml += `
+    <section>
+        <h2>EDUCATIONS</h2>
+        ${parsed.education.map(edu => `
+            <div class="education-block">
+                <div class="job-header">
+                    <span class="job-title">${escapeHTML(edu.institution)}</span>
+                    <span class="job-date">${escapeHTML(edu.date)}</span>
+                </div>
+                <div>${formatTextWithHighlights(edu.degree, autoHighlight)}</div>
+            </div>
+        `).join('')}
+    </section>`;
+  }
+
+  if (parsed.skills.length > 0) {
+    bodyHtml += `
+    <section>
+        <h2>SKILLS</h2>
+        <ul class="skills-list">
+            ${parsed.skills.map(skill => `
+                <li><span class="skill-category">${escapeHTML(skill.category)} :</span> ${formatTextWithHighlights(skill.items, autoHighlight)}</li>
+            `).join('')}
+        </ul>
+    </section>`;
+  }
+
+  parsed.customSections.forEach(sec => {
+    bodyHtml += `
+    <section>
+        <h2>${escapeHTML(sec.title)}</h2>
+        ${sec.content.map(c => `<p>${formatTextWithHighlights(c, autoHighlight)}</p>`).join('')}
+    </section>`;
+  });
+
+  return bodyHtml;
+};
+
+const formatResumeTextToHTML = (text: string, autoHighlight: boolean = false, fitToPage: boolean = false): string => {
+  if (!text) return '';
+  return renderEditorCanvasHTML(text, fitToPage, autoHighlight);
 };
 
 interface MatchResult {
@@ -597,6 +829,126 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
     }
   }, [selectedJob, atsScore]);
 
+  const [fitToSinglePage, setFitToSinglePage] = useState(false);
+  const [highlightKeywords, setHighlightKeywords] = useState(true);
+
+  // Export Modal state & handlers
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportingAI, setExportingAI] = useState(false);
+  const [isFormattingAI, setIsFormattingAI] = useState(false);
+  const [exportHTML, setExportHTML] = useState('');
+  const [exportTab, setExportTab] = useState<'preview' | 'code'>('preview');
+  const [copySuccess, setCopySuccess] = useState(false);
+
+  const handleOpenExportModal = () => {
+    const html = generatePrintHTML(editorContent, fitToSinglePage, highlightKeywords);
+    setExportHTML(html);
+    setShowExportModal(true);
+  };
+
+  const handleToggleFitToSinglePage = async (checked: boolean) => {
+    setFitToSinglePage(checked);
+    if (checked) {
+      setIsFormattingAI(true);
+      try {
+        const res = await convertResumeToTemplate(editorContent, activeModel, true);
+        if (res) {
+          if (res.parsed) {
+            const textToUse = convertStructuredToText(res.parsed);
+            applyFullResume(textToUse);
+            await saveContent(textToUse);
+          }
+          if (res.html) {
+            setExportHTML(res.html);
+          } else {
+            setExportHTML(generatePrintHTML(editorContent, true, highlightKeywords));
+          }
+          setSaveMessage('AI Optimized for 1 Single Page!');
+          if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+          saveTimerRef.current = setTimeout(() => setSaveMessage(''), 2500);
+          if (selectedJob) runATS();
+        }
+      } catch (err) {
+        console.error('Failed 1-page fit optimization:', err);
+        setExportHTML(generatePrintHTML(editorContent, true, highlightKeywords));
+      } finally {
+        setIsFormattingAI(false);
+      }
+    } else {
+      setExportHTML(generatePrintHTML(editorContent, false, highlightKeywords));
+    }
+  };
+
+  const handleFormatPDFWithAI = async () => {
+    setIsFormattingAI(true);
+    try {
+      const res = await convertResumeToTemplate(editorContent, activeModel, fitToSinglePage);
+      if (res) {
+        if (res.parsed) {
+          const textToUse = convertStructuredToText(res.parsed);
+          applyFullResume(textToUse);
+          await saveContent(textToUse);
+        }
+        if (res.html) {
+          setExportHTML(res.html);
+        }
+        setShowExportModal(true);
+        setSaveMessage('PDF Formatted with AI!');
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = setTimeout(() => setSaveMessage(''), 2500);
+        if (selectedJob) runATS();
+      }
+    } catch (err) {
+      console.error('Failed to format PDF with AI:', err);
+      handleOpenExportModal();
+    } finally {
+      setIsFormattingAI(false);
+    }
+  };
+
+  const handleConvertWithAI = async () => {
+    setExportingAI(true);
+    try {
+      const res = await convertResumeToTemplate(editorContent, activeModel, fitToSinglePage);
+      if (res) {
+        if (res.parsed) {
+          const textToUse = convertStructuredToText(res.parsed);
+          applyFullResume(textToUse);
+          await saveContent(textToUse);
+        }
+        if (res.html) {
+          setExportHTML(res.html);
+        }
+        if (selectedJob) runATS();
+      }
+    } catch (err) {
+      console.error('Failed to convert resume via AI:', err);
+      setExportHTML(generatePrintHTML(editorContent, fitToSinglePage, highlightKeywords));
+    } finally {
+      setExportingAI(false);
+    }
+  };
+
+  const handleDownloadHTML = () => {
+    const htmlToSave = exportHTML || generatePrintHTML(editorContent, fitToSinglePage, highlightKeywords);
+    const blob = new Blob([htmlToSave], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'Venugopal_Hegde_Resume.html';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCopyHTML = () => {
+    const htmlToCopy = exportHTML || generatePrintHTML(editorContent, fitToSinglePage, highlightKeywords);
+    navigator.clipboard.writeText(htmlToCopy);
+    setCopySuccess(true);
+    setTimeout(() => setCopySuccess(false), 2000);
+  };
+
   const handleSave = useCallback(async (silent = false) => {
     const result = await saveContent();
     if (result) {
@@ -611,19 +963,33 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
   }, [saveContent, selectedJob, runATS]);
 
   const handleRevert = useCallback(async () => {
-    if (!window.confirm('Are you sure you want to revert all changes? This will discard all edits and restore the original uploaded resume.')) {
+    if (!window.confirm('Are you sure you want to revert all changes? This will restore the original resume and convert it to the standard ATS template.')) {
       return;
     }
     const result = await revertContent();
     if (result) {
       setChatMessages([]); // Reset chat history on revert to start a clean session
-      setSaveMessage('Reverted!');
+      let textToUse = result.text;
+      if (result.parsed) {
+        textToUse = convertStructuredToText(result.parsed);
+      }
+      applyFullResume(textToUse);
+      await saveContent(textToUse);
+
+      if (result.html) {
+        setExportHTML(result.html);
+      } else {
+        const html = generatePrintHTML(textToUse, fitToSinglePage, highlightKeywords);
+        setExportHTML(html);
+      }
+
+      setSaveMessage('Reverted & Formatted to Template!');
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = setTimeout(() => setSaveMessage(''), 2000);
+      saveTimerRef.current = setTimeout(() => setSaveMessage(''), 2500);
       // Re-run ATS after reverting
       if (selectedJob) runATS();
     }
-  }, [revertContent, selectedJob, runATS, setChatMessages]);
+  }, [revertContent, selectedJob, runATS, setChatMessages, fitToSinglePage, highlightKeywords, applyFullResume, saveContent]);
 
   const handleApplyFullResume = useCallback(async (text: string) => {
     applyFullResume(text);
@@ -632,7 +998,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
   }, [applyFullResume, saveContent, selectedJob, runATS]);
 
   const handleDownloadPDF = () => {
-    const resumeHTML = generatePrintHTML(editorContent);
+    const resumeHTML = generatePrintHTML(editorContent, fitToSinglePage, highlightKeywords);
     const printWin = window.open('', '_blank', 'width=900,height=700');
     if (!printWin) return;
     printWin.document.open();
@@ -726,109 +1092,192 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
   // ── Main Editor ─────────────────────────────────────────────────────────────
   return (
     <>
-      {/* Top Toolbar */}
-      <div className="flex flex-wrap items-center gap-3 mb-4 no-print">
-        {/* ATS Score */}
-        <div className="flex-1 min-w-[280px]">
-          <ATSScoreBar
-            score={atsScore}
-            previousScore={prevAtsScore}
-            loading={atsLoading}
-            jobTitle={selectedJob?.title}
-            pendingChanges={pendingChanges.length}
-            onReanalyze={selectedJob ? runATS : undefined}
-          />
+      {/* Sleek Top Command Bar */}
+      <div className="glass rounded-xl border border-white/10 p-3.5 mb-4 no-print space-y-3 shadow-xl">
+        {/* Row 1: ATS Score + Core Controls */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex-1 min-w-[280px]">
+            <ATSScoreBar
+              score={atsScore}
+              previousScore={prevAtsScore}
+              loading={atsLoading}
+              jobTitle={selectedJob?.title}
+              pendingChanges={pendingChanges.length}
+              onReanalyze={selectedJob ? runATS : undefined}
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* View Switcher Tabs */}
+            <div className="flex items-center bg-surface-300 rounded-lg p-1 border border-white/5">
+              <button
+                onClick={() => setActiveSubTab('editor')}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                  activeSubTab === 'editor'
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                ✏️ Visual Canvas
+              </button>
+              <button
+                onClick={() => setActiveSubTab('pdf')}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                  activeSubTab === 'pdf'
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                📄 Original PDF
+              </button>
+            </div>
+
+            {/* Chat Panel Toggle */}
+            <button
+              id="btn-toggle-chat"
+              onClick={() => setChatVisible(!chatVisible)}
+              className={`p-2 rounded-lg text-xs font-medium border flex items-center gap-1.5 transition-all ${
+                chatVisible
+                  ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+                  : 'bg-surface-200 text-gray-300 border-white/5 hover:bg-surface-300'
+              }`}
+              title={chatVisible ? 'Hide AI Copilot' : 'Show AI Copilot'}
+            >
+              {chatVisible ? <PanelRightClose className="w-4 h-4" /> : <PanelRight className="w-4 h-4" />}
+              <span className="hidden sm:inline">Copilot</span>
+            </button>
+          </div>
         </div>
 
-        {/* Action buttons */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Save indicator */}
-          {saveMessage && (
-            <span className="flex items-center gap-1 text-xs text-emerald-400 animate-fade-in">
-              <CheckCircle2 className="w-3.5 h-3.5" /> {saveMessage}
-            </span>
-          )}
-          {isDirty && !saveMessage && (
-            <span className="text-xs text-amber-400 animate-pulse">Unsaved changes</span>
-          )}
+        {/* Row 2: Density Options & Quick AI Actions */}
+        <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-white/5">
+          {/* Left Options */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <input
+              type="file"
+              ref={uploadInputRef}
+              style={{ display: 'none' }}
+              accept=".pdf,.txt"
+              onChange={handleDirectUpload}
+            />
 
-          <input
-            type="file"
-            ref={uploadInputRef}
-            style={{ display: 'none' }}
-            accept=".pdf,.txt"
-            onChange={handleDirectUpload}
-          />
+            {/* Fit to 1 Page Button */}
+            <button
+              id="btn-fit-single-page"
+              onClick={() => handleToggleFitToSinglePage(!fitToSinglePage)}
+              disabled={isFormattingAI}
+              className={`text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-medium transition-all border ${
+                fitToSinglePage
+                  ? 'bg-indigo-600 text-white border-indigo-400 shadow-md shadow-indigo-600/30'
+                  : 'bg-surface-200 text-gray-300 border-white/5 hover:bg-surface-300'
+              }`}
+              title="Ask AI to condense and fit resume content strictly onto 1 single page"
+            >
+              {isFormattingAI ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+              ) : (
+                <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
+              )}
+              Fit to 1 Page {fitToSinglePage ? '✓' : ''}
+            </button>
 
-          <button
-            id="btn-direct-upload"
-            onClick={() => uploadInputRef.current?.click()}
-            className="btn-ghost text-xs flex items-center gap-1.5"
-            title="Upload a new resume PDF/TXT"
-          >
-            <Upload className="w-3.5 h-3.5" />
-            Upload New
-          </button>
+            {/* Keyword Highlight Toggle */}
+            <label className="flex items-center gap-1.5 cursor-pointer px-3 py-1.5 rounded-lg bg-surface-200 hover:bg-surface-300 border border-white/5 transition-all text-xs font-medium text-gray-300">
+              <input
+                type="checkbox"
+                checked={highlightKeywords}
+                onChange={(e) => setHighlightKeywords(e.target.checked)}
+                className="rounded accent-indigo-500 w-3.5 h-3.5 cursor-pointer"
+              />
+              Highlight Keywords
+            </label>
 
-          <button
-            id="btn-save-resume"
-            onClick={() => handleSave(false)}
-            disabled={isSaving || !isDirty}
-            className="btn-ghost text-xs flex items-center gap-1.5 disabled:opacity-40"
-          >
-            {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-            Save
-          </button>
+            {/* History Button */}
+            <button
+              id="btn-version-history"
+              onClick={() => { setShowVersions(!showVersions); if (!showVersions) loadVersions(); }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 border transition-all ${
+                showVersions ? 'bg-indigo-600/20 text-indigo-300 border-indigo-500/40' : 'bg-surface-200 text-gray-300 border-white/5 hover:bg-surface-300'
+              }`}
+            >
+              <GitBranch className="w-3.5 h-3.5 text-indigo-400" />
+              History
+            </button>
 
-          <button
-            id="btn-revert-resume"
-            onClick={handleRevert}
-            disabled={isSaving}
-            className="btn-ghost text-xs flex items-center gap-1.5 text-rose-400 hover:text-rose-300 disabled:opacity-40"
-            title="Revert all edits back to original PDF text"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            Revert
-          </button>
+            {/* Upload New Button */}
+            <button
+              id="btn-direct-upload"
+              onClick={() => uploadInputRef.current?.click()}
+              className="px-3 py-1.5 rounded-lg bg-surface-200 hover:bg-surface-300 border border-white/5 text-xs text-gray-300 font-medium flex items-center gap-1.5 transition-all"
+              title="Upload a new resume PDF/TXT"
+            >
+              <Upload className="w-3.5 h-3.5 text-gray-400" />
+              Upload New
+            </button>
+          </div>
 
-          <button
-            id="btn-mark-applied"
-            onClick={() => setShowAppliedDialog(true)}
-            className="btn-ghost text-xs flex items-center gap-1.5 text-brand-400 hover:text-brand-300"
-          >
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            Applied?
-          </button>
+          {/* Right Action Commands */}
+          <div className="flex items-center gap-2 flex-wrap ml-auto">
+            {/* Status notification badge */}
+            {saveMessage && (
+              <span className="flex items-center gap-1 text-xs text-emerald-400 font-medium animate-fade-in mr-1">
+                <CheckCircle2 className="w-3.5 h-3.5" /> {saveMessage}
+              </span>
+            )}
+            {isDirty && !saveMessage && (
+              <span className="text-xs text-amber-400 font-medium animate-pulse mr-1">Unsaved changes</span>
+            )}
 
-          <button
-            id="btn-version-history"
-            onClick={() => { setShowVersions(!showVersions); if (!showVersions) loadVersions(); }}
-            className={`btn-ghost text-xs flex items-center gap-1.5 ${showVersions ? 'text-brand-400' : ''}`}
-          >
-            <GitBranch className="w-3.5 h-3.5" />
-            History
-          </button>
+            {/* Revert Button */}
+            <button
+              id="btn-revert-resume"
+              onClick={handleRevert}
+              disabled={isSaving}
+              className="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/20 text-xs font-medium flex items-center gap-1.5 disabled:opacity-40 transition-all"
+              title="Revert all edits back to original PDF text and convert to standard template"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Revert
+            </button>
 
-          <button
-            id="btn-download-pdf"
-            onClick={handleDownloadPDF}
-            className="btn-primary text-xs flex items-center gap-1.5"
-          >
-            <Download className="w-3.5 h-3.5" />
-            PDF
-          </button>
+            {/* Save Button */}
+            <button
+              id="btn-save-resume"
+              onClick={() => handleSave(false)}
+              disabled={isSaving || !isDirty}
+              className="px-3 py-1.5 rounded-lg bg-surface-200 hover:bg-surface-300 text-white border border-white/10 text-xs font-medium flex items-center gap-1.5 disabled:opacity-40 transition-all"
+            >
+              {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5 text-emerald-400" />}
+              Save
+            </button>
 
-          <button
-            id="btn-toggle-chat"
-            onClick={() => setChatVisible(!chatVisible)}
-            className="btn-ghost p-2"
-            title={chatVisible ? 'Hide AI Chat' : 'Show AI Chat'}
-          >
-            {chatVisible
-              ? <PanelRightClose className="w-4 h-4" />
-              : <PanelRight className="w-4 h-4" />
-            }
-          </button>
+            {/* AI Format PDF Button */}
+            <button
+              id="btn-format-pdf-ai"
+              onClick={handleFormatPDFWithAI}
+              disabled={isFormattingAI}
+              className="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-indigo-600/30 disabled:opacity-50 transition-all"
+              title="Format PDF content into standard ATS template using AI"
+            >
+              {isFormattingAI ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+              ) : (
+                <Wand2 className="w-3.5 h-3.5 text-yellow-300" />
+              )}
+              Format PDF with AI
+            </button>
+
+            {/* Export ATS Template Modal Button */}
+            <button
+              id="btn-export-ats-template"
+              onClick={handleOpenExportModal}
+              className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-indigo-600/30 transition-all"
+              title="Export resume using AI ATS HTML & PDF Template"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
+              Export Template
+            </button>
+          </div>
         </div>
       </div>
 
@@ -911,39 +1360,29 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
             </div>
           )}
 
-          {/* Editor */}
-          <div className="flex-1 glass rounded-xl border border-white/5 overflow-hidden flex flex-col resume-editor-pane">
-            <div className="flex items-center gap-4 px-4 py-1.5 border-b border-white/5 bg-surface-100/50 flex-shrink-0 no-print">
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => setActiveSubTab('editor')}
-                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all duration-150 ${
-                    activeSubTab === 'editor'
-                      ? 'bg-brand-600/20 text-brand-300 border border-brand-500/30'
-                      : 'text-gray-400 hover:text-white'
-                  }`}
-                >
-                  ✏️ Visual Editor
-                </button>
-                <button
-                  onClick={() => setActiveSubTab('pdf')}
-                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all duration-150 ${
-                    activeSubTab === 'pdf'
-                      ? 'bg-brand-600/20 text-brand-300 border border-brand-500/30'
-                      : 'text-gray-400 hover:text-white'
-                  }`}
-                >
-                  📄 Original PDF
-                </button>
+          {/* Editor Container */}
+          <div className="flex-1 glass rounded-xl border border-white/10 overflow-hidden flex flex-col resume-editor-pane shadow-2xl">
+            {/* Canvas Sub-Header */}
+            <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-surface-100/70 flex-shrink-0 no-print">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span className="text-xs font-semibold text-gray-200">
+                  {activeSubTab === 'editor' ? 'Visual Resume Canvas (8.5" x 11")' : 'Original Uploaded PDF Document'}
+                </span>
+                {fitToSinglePage && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-medium">
+                    1-Page High-Density Mode
+                  </span>
+                )}
               </div>
-              <span className="ml-auto text-[10px] text-gray-600">
-                {editorContent.length.toLocaleString()} chars
+              <span className="text-xs font-mono text-gray-400">
+                {editorContent.length.toLocaleString()} characters
               </span>
             </div>
 
-            {/* Printable area */}
+            {/* Printable canvas area */}
             <div 
-              className={`flex-1 overflow-auto print-area bg-[#141416] p-8 ${activeSubTab === 'pdf' ? 'flex flex-col' : 'items-start'} relative`}
+              className={`flex-1 overflow-auto print-area bg-[#0b0f19] p-8 flex justify-center ${activeSubTab === 'pdf' ? 'flex flex-col' : 'items-start'} relative`}
               onClick={(e) => {
                 // Clicking outside the canvas or edits should dismiss the card
                 const target = e.target as HTMLElement;
@@ -989,14 +1428,12 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
                     }
                   }}
                   dangerouslySetInnerHTML={{ 
-                    __html: formatResumeTextToHTML(applyPendingChangesToText(editorContent, pendingChanges)) 
+                    __html: formatResumeTextToHTML(applyPendingChangesToText(editorContent, pendingChanges), highlightKeywords, fitToSinglePage) 
                   }}
-                  className="editor-textarea bg-white text-slate-800 shadow-2xl rounded-sm mx-auto flex-shrink-0"
+                  className={`editor-textarea bg-white text-slate-800 shadow-2xl rounded-sm mx-auto flex-shrink-0 ${fitToSinglePage ? 'fit-page' : ''}`}
                   style={{
                     width: '8.5in',
                     minHeight: '11in',
-                    padding: '1.0in 0.8in 1.0in 0.8in',
-                    textAlign: 'left',
                     outline: 'none',
                     boxSizing: 'border-box'
                   }}
@@ -1218,6 +1655,141 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
         onSaveVersion={saveAsApplied}
         onResumeUploaded={handleResumeUploaded}
       />
+
+      {/* ── Export ATS Resume Modal ────────────────────────────────────────── */}
+      {showExportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
+          <div className="bg-surface-100 border border-white/10 rounded-2xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-surface-200/50">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center">
+                  <Sparkles className="w-5 h-5 text-indigo-400" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-white">Export Professional ATS Resume Template</h3>
+                  <p className="text-xs text-gray-400">Convert raw/original PDF content into clean ATS-friendly HTML & PDF format</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowExportModal(false)}
+                className="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-white/5 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Action Bar */}
+            <div className="px-6 py-3 border-b border-white/5 bg-surface-200/30 flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleConvertWithAI}
+                  disabled={exportingAI}
+                  className="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-medium flex items-center gap-2 transition-all shadow-md shadow-indigo-600/20"
+                  title="Ask AI model to parse and convert original PDF content into this template"
+                >
+                  {exportingAI ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 text-yellow-300" />}
+                  Ask AI to Convert PDF Content
+                </button>
+
+                <button
+                  onClick={handleDownloadPDF}
+                  className="px-3.5 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs font-medium flex items-center gap-2 transition-all"
+                >
+                  <Download className="w-3.5 h-3.5 text-indigo-400" />
+                  Print / Save PDF
+                </button>
+
+                <button
+                  onClick={handleDownloadHTML}
+                  className="px-3.5 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs font-medium flex items-center gap-2 transition-all"
+                >
+                  <FileCode className="w-3.5 h-3.5 text-emerald-400" />
+                  Download HTML
+                </button>
+
+                <button
+                  onClick={handleCopyHTML}
+                  className="px-3.5 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs font-medium flex items-center gap-2 transition-all"
+                >
+                  {copySuccess ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-gray-400" />}
+                  {copySuccess ? 'Copied HTML!' : 'Copy Code'}
+                </button>
+              </div>
+
+              {/* Controls & View Switcher */}
+              <div className="flex items-center gap-2">
+                <button
+                  id="btn-modal-fit-single-page"
+                  onClick={() => handleToggleFitToSinglePage(!fitToSinglePage)}
+                  disabled={isFormattingAI}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all border ${
+                    fitToSinglePage
+                      ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/20'
+                      : 'bg-surface-300 text-gray-300 border-white/5 hover:bg-surface-400'
+                  }`}
+                  title="Ask AI to condense and fit resume content strictly onto 1 single page"
+                >
+                  {isFormattingAI ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                  ) : (
+                    <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
+                  )}
+                  Fit to 1 Page {fitToSinglePage ? '(Active)' : ''}
+                </button>
+
+                <div className="flex items-center bg-surface-300 rounded-lg p-1 border border-white/5">
+                  <button
+                    onClick={() => setExportTab('preview')}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors ${exportTab === 'preview' ? 'bg-indigo-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Visual Preview
+                  </button>
+                  <button
+                    onClick={() => setExportTab('code')}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors ${exportTab === 'code' ? 'bg-indigo-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                  >
+                    <Code className="w-3.5 h-3.5" />
+                    HTML Code
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Body Preview */}
+            <div className="flex-1 min-h-[450px] overflow-hidden p-4 bg-surface-300/50 flex flex-col">
+              {exportTab === 'preview' ? (
+                <div className="w-full h-full min-h-[450px] bg-white rounded-xl shadow-inner overflow-hidden border border-gray-200">
+                  <iframe
+                    title="ATS Template Preview"
+                    srcDoc={exportHTML || generatePrintHTML(editorContent)}
+                    className="w-full h-full min-h-[450px] border-0"
+                  />
+                </div>
+              ) : (
+                <div className="w-full h-full min-h-[450px] bg-gray-950 rounded-xl border border-white/10 p-4 font-mono text-xs text-indigo-300 overflow-auto">
+                  <pre className="whitespace-pre-wrap leading-relaxed">{exportHTML || generatePrintHTML(editorContent)}</pre>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-3 border-t border-white/10 bg-surface-200/50 flex items-center justify-between text-xs text-gray-400">
+              <span className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                Formatted with ATS-friendly Segoe UI font, #2c3e50 headers, flex job headers & 220px skill categories
+              </span>
+              <button
+                onClick={() => setShowExportModal(false)}
+                className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs font-medium transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

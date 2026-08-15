@@ -117,12 +117,45 @@ type ChatRequest struct {
 	Model      string `json:"model,omitempty"` // optional per-request model override
 }
 
+// StructuredResume represents complete AI generated HTML structured components
+type StructuredResume struct {
+	Name            string         `json:"name"`
+	Title           string         `json:"title"`
+	ContactItems    []string       `json:"contact_items"`
+	Summary         string         `json:"summary"`
+	Skills          []SkillCategory `json:"skills"`
+	WorkExperience  []JobExperience `json:"work_experience"`
+	Education       []EducationItem `json:"education"`
+	HighlightKeywords []string     `json:"highlight_keywords"`
+}
+
+type SkillCategory struct {
+	Category string `json:"category"`
+	Items    string `json:"items"`
+}
+
+type JobExperience struct {
+	Title     string   `json:"title"`
+	Date      string   `json:"date"`
+	Company   string   `json:"company"`
+	Location  string   `json:"location"`
+	Bullets   []string `json:"bullets"`
+	TechStack string   `json:"tech_stack"`
+}
+
+type EducationItem struct {
+	Institution string `json:"institution"`
+	Date        string `json:"date"`
+	Degree      string `json:"degree"`
+}
+
 // ChatResponse is the AI assistant's response
 type ChatResponse struct {
 	Message               string              `json:"message"`
 	ProposedEdits         []ProposedEdit      `json:"proposed_edits,omitempty"`
 	GapPrompts            []GapQuestionPrompt `json:"gap_prompts,omitempty"`
 	FullResumeReplacement string              `json:"full_resume_replacement,omitempty"`
+	StructuredResume      *StructuredResume   `json:"structured_resume,omitempty"`
 }
 
 // ResumeVersion is a snapshot of a resume at the time of applying

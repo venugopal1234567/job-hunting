@@ -112,16 +112,16 @@
 }
 
 /* Resume editor textarea */
-/* Center-page layout resembling Google Docs */
+/* ─── Resume Editor Canvas Sheet & Printable Template Styles ───────────────── */
 .resume-editor-pane {
-  background: #1e1e24 !important; /* Page canvas background */
+  background: #1e1e24 !important;
   border: 1px solid rgba(255, 255, 255, 0.05) !important;
   display: flex !important;
   flex-direction: column !important;
 }
 
 .print-area {
-  background: #141416; /* Deep dark area behind the document */
+  background: #141416;
   display: flex !important;
   justify-content: center !important;
   padding: 2rem 1rem !important;
@@ -129,33 +129,177 @@
   flex: 1 !important;
 }
 
-/* The page sheet itself */
+/* The page sheet itself in visual editor */
 .editor-textarea {
   background: #ffffff !important;
-  color: #1e293b !important; /* Off-black */
-  font-family: 'Inter', system-ui, sans-serif !important;
-  width: 8.5in !important; /* Standard Letter width */
-  min-height: 11in !important; /* Standard Letter height */
+  color: #333333 !important;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+  width: 8.5in !important;
+  min-height: 11in !important;
   height: auto !important;
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5) !important;
   border-radius: 4px !important;
   border: 1px solid #e2e8f0 !important;
   box-sizing: border-box !important;
-  resize: none !important;
-  caret-color: #2563eb !important; /* Blue insertion cursor */
-  outline: none !important;
-  display: block !important;
+  padding: 40px 35px !important;
   margin: 0 auto !important;
+  outline: none !important;
+  line-height: 1.5;
 }
 
-.editor-textarea::selection {
-  background: #bfdbfe !important; /* Soft blue selection */
-  color: #1e3a8a !important;
+.editor-textarea.fit-page {
+  padding: 20px 25px !important;
+  font-size: 9.5pt !important;
+  line-height: 1.35 !important;
+}
+
+/* Template internal elements styling */
+.editor-textarea header {
+  text-align: left;
+  margin-bottom: 18px;
+  border-bottom: 2px solid #2c3e50;
+  padding-bottom: 12px;
+}
+.editor-textarea.fit-page header {
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+}
+
+.editor-textarea h1 {
+  font-size: 2.2em;
+  color: #2c3e50;
+  margin: 0 0 4px 0;
+  font-weight: 800;
+  text-align: left;
+  letter-spacing: 0.5px;
+}
+.editor-textarea.fit-page h1 {
+  font-size: 1.8em;
+  margin: 0 0 2px 0;
+}
+
+.editor-textarea .contact-info {
+  font-size: 0.95em;
+  color: #555;
+  text-align: left;
+}
+.editor-textarea.fit-page .contact-info {
+  font-size: 0.88em;
+}
+.editor-textarea .contact-info span {
+  margin: 0 6px;
+}
+
+.editor-textarea h2 {
+  color: #2c3e50;
+  border-bottom: 1px solid #ccc;
+  padding-bottom: 3px;
+  margin-top: 18px;
+  margin-bottom: 10px;
+  font-size: 1.2em;
+  font-weight: 700;
+  text-transform: uppercase;
+  text-align: left;
+}
+.editor-textarea.fit-page h2 {
+  margin-top: 8px;
+  margin-bottom: 4px;
+  font-size: 1.05em;
+  padding-bottom: 2px;
+}
+
+.editor-textarea .job {
+  margin-bottom: 16px;
+}
+.editor-textarea.fit-page .job {
+  margin-bottom: 8px;
+}
+
+.editor-textarea .job-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 3px;
+}
+
+.editor-textarea .job-title {
+  font-size: 1.05em;
+  font-weight: bold;
+  color: #34495e;
+}
+
+.editor-textarea .job-date {
+  font-weight: bold;
+  color: #7f8c8d;
+  font-size: 0.95em;
+}
+
+.editor-textarea .company-info {
+  display: flex;
+  justify-content: space-between;
+  font-style: italic;
+  color: #555;
+  margin-bottom: 6px;
+  font-size: 0.95em;
+}
+
+.editor-textarea ul {
+  margin-top: 0;
+  margin-bottom: 4px;
+  padding-left: 18px;
+}
+
+.editor-textarea li {
+  margin-bottom: 5px;
+  text-align: left;
+}
+.editor-textarea.fit-page li {
+  margin-bottom: 2px;
+}
+
+.editor-textarea .tech-stack {
+  font-weight: bold;
+  font-size: 0.88em;
+  color: #2c3e50;
+  margin-top: 4px;
+}
+
+.editor-textarea .skills-list {
+  list-style-type: none;
+  padding: 0;
+}
+
+.editor-textarea .skills-list li {
+  margin-bottom: 8px;
+}
+.editor-textarea.fit-page .skills-list li {
+  margin-bottom: 4px;
+}
+
+.editor-textarea .skill-category {
+  font-weight: bold;
+  color: #2c3e50;
+  width: 210px;
+  display: inline-block;
+}
+
+.editor-textarea .education-block {
+  margin-bottom: 12px;
+}
+.editor-textarea.fit-page .education-block {
+  margin-bottom: 8px;
+}
+
+.editor-textarea .kw-highlight {
+  font-weight: 700;
+  color: #1e3a8a;
+  background-color: rgba(59, 130, 246, 0.12);
+  padding: 0px 3px;
+  border-radius: 3px;
 }
 
 /* ─── Print / PDF Styles ──────────────────────────────────────────────────── */
 @media print {
-  /* Hide all UI elements */
   .no-print,
   #chat-panel,
   #ats-score-bar,
@@ -165,7 +309,6 @@
     display: none !important;
   }
 
-  /* Reset all parent container layouts to standard block elements for natural page breaks */
   body, 
   #root,
   main,
@@ -174,10 +317,8 @@
   .flex.gap-4,
   .flex.flex-col {
     background: transparent !important;
-    background-color: transparent !important;
     height: auto !important;
     min-height: unset !important;
-    max-height: unset !important;
     overflow: visible !important;
     padding: 0 !important;
     margin: 0 !important;
@@ -187,36 +328,24 @@
     border: none !important;
   }
 
-  /* Print container */
   .print-area {
     background: white !important;
-    background-color: white !important;
     display: block !important;
     width: 100% !important;
     height: auto !important;
-    min-height: unset !important;
-    overflow: visible !important;
     padding: 0 !important;
     margin: 0 !important;
   }
 
-  /* Resume sheet page */
   .editor-textarea {
     display: block !important;
     width: 100% !important;
     height: auto !important;
-    min-height: unset !important;
-    padding: 0.8in 0.6in !important; /* Professional margins */
-    margin: 0 !important;
-    border: none !important;
     box-shadow: none !important;
+    border: none !important;
     background: white !important;
-    background-color: white !important;
-    overflow: visible !important;
-    color: #1e293b !important;
   }
 
-  /* Force colored rules and accents to print */
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;

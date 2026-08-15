@@ -95,6 +95,37 @@ export interface GapQuestionPrompt {
 
 export type ChatMessageRole = 'user' | 'assistant' | 'system';
 
+export interface SkillCategory {
+  category: string;
+  items: string;
+}
+
+export interface JobExperience {
+  title: string;
+  date: string;
+  company: string;
+  location: string;
+  bullets: string[];
+  tech_stack: string;
+}
+
+export interface EducationItem {
+  institution: string;
+  date: string;
+  degree: string;
+}
+
+export interface StructuredResume {
+  name: string;
+  title: string;
+  contact_items: string[];
+  summary: string;
+  skills: SkillCategory[];
+  work_experience: JobExperience[];
+  education: EducationItem[];
+  highlight_keywords: string[];
+}
+
 export interface ChatMessage {
   id: string;
   role: ChatMessageRole;
@@ -102,6 +133,7 @@ export interface ChatMessage {
   proposedEdits?: ProposedEdit[];
   gapPrompts?: GapQuestionPrompt[];
   fullResumeReplacement?: string;
+  structuredResume?: StructuredResume;
   timestamp: number;
 }
 

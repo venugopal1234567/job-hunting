@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"regexp"
 	"remotehunter/internal/ai"
 	"remotehunter/internal/models"
 	"remotehunter/internal/resume"
@@ -706,7 +707,23 @@ func (h *Handler) RevertResumeText(c *gin.Context) {
 	// Invalidate cached ATS analyses for this resume so they re-run
 	h.db.Exec(`DELETE FROM ats_analyses WHERE resume_id = $1`, id)
 
-	c.JSON(http.StatusOK, gin.H{"id": id, "text": rawText, "skills": skills, "message": "reverted"})
+	// Pass original raw text to AI to convert into standard template
+	model := h.getActiveModel()
+	structRes, templateHTML, err := h.aiClient.ConvertResumeToTemplate(rawText, model, false)
+	if err != nil || structRes == nil {
+		log.Printf("[Handler] RevertResumeText AI conversion error: %v, using fallback parser", err)
+		structRes = parseResumeStructureToGo(rawText)
+		templateHTML = ai.BuildATSTemplateHTML(structRes, false)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"id":      id,
+		"text":    rawText,
+		"skills":  skills,
+		"html":    templateHTML,
+		"parsed":  structRes,
+		"message": "reverted and converted to standard template",
+	})
 }
 
 
@@ -916,4 +933,231 @@ func (h *Handler) UpdateAISettings(c *gin.Context) {
 	log.Printf("[AI] Active model switched to: %s", body.ActiveModel)
 	c.JSON(http.StatusOK, gin.H{"active_model": body.ActiveModel, "message": "model updated"})
 }
+
+// ─────────────────────────────────────────────────────
+// POST /resume/convert-template  — Convert resume content to ATS template
+// ─────────────────────────────────────────────────────
+
+func (h *Handler) ConvertResumeTemplate(c *gin.Context) {
+	var body struct {
+		Text          string `json:"text"`
+		Model         string `json:"model"`
+		FitSinglePage bool   `json:"fit_single_page"`
+	}
+	_ = c.ShouldBindJSON(&body)
+
+	rawText := body.Text
+	if strings.TrimSpace(rawText) == "" {
+		err := h.db.QueryRow(`
+			SELECT COALESCE(edited_text, raw_text) 
+			FROM resumes 
+			WHERE is_active = TRUE 
+			ORDER BY uploaded_at DESC 
+			LIMIT 1`).Scan(&rawText)
+		if err != nil || strings.TrimSpace(rawText) == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "no active resume text available"})
+			return
+		}
+	}
+
+	modelOverride := body.Model
+	if modelOverride == "" {
+		modelOverride = h.getActiveModel()
+	}
+
+	// Try AI conversion
+	structRes, htmlContent, err := h.aiClient.ConvertResumeToTemplate(rawText, modelOverride, body.FitSinglePage)
+	if err != nil || structRes == nil {
+		log.Printf("[Handler] ConvertResumeTemplate AI error: %v, using fallback parser", err)
+		structRes = parseResumeStructureToGo(rawText)
+		htmlContent = ai.BuildATSTemplateHTML(structRes, body.FitSinglePage)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"html":    htmlContent,
+		"parsed":  structRes,
+	})
+}
+
+func parseResumeStructureToGo(text string) *models.StructuredResume {
+	reCite := regexp.MustCompile(`\[cite:\s*\d+\]`)
+	text = reCite.ReplaceAllString(text, "")
+
+	lines := strings.Split(text, "\n")
+	res := &models.StructuredResume{
+		ContactItems:   []string{},
+		WorkExperience: []models.JobExperience{},
+		Education:      []models.EducationItem{},
+		Skills:         []models.SkillCategory{},
+	}
+
+	var nonCols []string
+	for _, l := range lines {
+		l = strings.TrimSpace(l)
+		if l != "" {
+			nonCols = append(nonCols, l)
+		}
+	}
+	if len(nonCols) == 0 {
+		return res
+	}
+
+	res.Name = nonCols[0]
+	idx := 1
+
+	for idx < len(nonCols) {
+		line := nonCols[idx]
+		if isSectionHeaderLine(line) {
+			break
+		}
+		if res.Title == "" && !strings.Contains(line, "@") && !strings.Contains(line, "+") && !strings.Contains(line, ".com") {
+			res.Title = line
+		} else {
+			parts := strings.Split(line, "|")
+			for _, p := range parts {
+				p = strings.TrimSpace(p)
+				if p != "" {
+					res.ContactItems = append(res.ContactItems, p)
+				}
+			}
+		}
+		idx++
+	}
+
+	currentSection := ""
+	var currentJob *models.JobExperience
+	var currentEdu *models.EducationItem
+
+	dateRx := regexp.MustCompile(`(?i)((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d{4})[-–\s\u2013\u2014]+(?:Present|\d{4}|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))\s*$`)
+
+	for ; idx < len(nonCols); idx++ {
+		line := nonCols[idx]
+		if isSectionHeaderLine(line) {
+			if currentJob != nil {
+				res.WorkExperience = append(res.WorkExperience, *currentJob)
+				currentJob = nil
+			}
+			if currentEdu != nil {
+				res.Education = append(res.Education, *currentEdu)
+				currentEdu = nil
+			}
+			upper := strings.ToUpper(line)
+			if strings.Contains(upper, "SUMMARY") {
+				currentSection = "SUMMARY"
+			} else if strings.Contains(upper, "SKILL") {
+				currentSection = "SKILLS"
+			} else if strings.Contains(upper, "WORK") || strings.Contains(upper, "EXPERIENCE") {
+				currentSection = "WORK"
+			} else if strings.Contains(upper, "EDU") {
+				currentSection = "EDUCATION"
+			} else {
+				currentSection = line
+			}
+			continue
+		}
+
+		switch currentSection {
+		case "SUMMARY":
+			if res.Summary == "" {
+				res.Summary = line
+			} else {
+				res.Summary += " " + line
+			}
+		case "SKILLS":
+			if strings.Contains(line, ":") {
+				parts := strings.SplitN(line, ":", 2)
+				res.Skills = append(res.Skills, models.SkillCategory{
+					Category: strings.TrimSpace(parts[0]),
+					Items:    strings.TrimSpace(parts[1]),
+				})
+			} else {
+				txt := strings.TrimLeft(line, "•-*▪◦ ")
+				res.Skills = append(res.Skills, models.SkillCategory{
+					Category: "Key Skills",
+					Items:    txt,
+				})
+			}
+		case "WORK":
+			dm := dateRx.FindStringSubmatch(line)
+			if len(dm) > 0 && len(line) < 130 {
+				if currentJob != nil {
+					res.WorkExperience = append(res.WorkExperience, *currentJob)
+				}
+				date := dm[1]
+				title := strings.TrimSpace(strings.TrimRight(line[:len(line)-len(date)], " |–—-"))
+				currentJob = &models.JobExperience{
+					Title:   title,
+					Date:    date,
+					Bullets: []string{},
+				}
+			} else if strings.HasPrefix(strings.ToLower(line), "technologies") {
+				if currentJob != nil {
+					tech := line
+					if idx := strings.Index(line, ":"); idx >= 0 {
+						tech = strings.TrimSpace(line[idx+1:])
+					}
+					currentJob.TechStack = tech
+				}
+			} else if (strings.Contains(line, "|") || strings.Contains(line, " - ") || strings.Contains(line, "–")) && currentJob != nil && currentJob.Company == "" {
+				parts := strings.FieldsFunc(line, func(r rune) bool {
+					return r == '|' || r == '-' || r == '–'
+				})
+				if len(parts) >= 2 {
+					currentJob.Company = strings.TrimSpace(parts[0])
+					currentJob.Location = strings.TrimSpace(parts[1])
+				} else {
+					currentJob.Company = line
+				}
+			} else if currentJob != nil {
+				txt := strings.TrimLeft(line, "•-*▪◦ ")
+				currentJob.Bullets = append(currentJob.Bullets, txt)
+			}
+		case "EDUCATION":
+			dm := dateRx.FindStringSubmatch(line)
+			if len(dm) > 0 {
+				if currentEdu != nil {
+					res.Education = append(res.Education, *currentEdu)
+				}
+				date := dm[1]
+				inst := strings.TrimSpace(strings.TrimRight(line[:len(line)-len(date)], " |–—-"))
+				currentEdu = &models.EducationItem{
+					Institution: inst,
+					Date:        date,
+				}
+			} else if currentEdu != nil {
+				if currentEdu.Degree == "" {
+					currentEdu.Degree = line
+				} else {
+					currentEdu.Degree += " " + line
+				}
+			} else {
+				res.Education = append(res.Education, models.EducationItem{
+					Institution: line,
+				})
+			}
+		}
+	}
+
+	if currentJob != nil {
+		res.WorkExperience = append(res.WorkExperience, *currentJob)
+	}
+	if currentEdu != nil {
+		res.Education = append(res.Education, *currentEdu)
+	}
+
+	return res
+}
+
+func isSectionHeaderLine(line string) bool {
+	upper := strings.ToUpper(strings.TrimSpace(line))
+	headers := []string{"PROFESSIONAL SUMMARY", "SUMMARY", "WORK EXPERIENCES", "WORK EXPERIENCE", "EXPERIENCE", "SKILLS", "TECHNICAL SKILLS", "EDUCATIONS", "EDUCATION", "PROJECTS", "CERTIFICATIONS"}
+	for _, h := range headers {
+		if upper == h {
+			return true
+		}
+	}
+	return len(line) < 40 && line == upper && !strings.Contains(line, "|") && !strings.Contains(line, "@") && len(line) > 3
+}
+
 

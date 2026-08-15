@@ -66,6 +66,7 @@ export const useResumeEditor = (jobId?: string) => {
         proposedEdits: response.proposed_edits?.map((e: ProposedEdit) => ({ ...e })),
         gapPrompts: response.gap_prompts?.map((g: GapQuestionPrompt) => ({ ...g })),
         fullResumeReplacement: response.full_resume_replacement,
+        structuredResume: response.structured_resume,
         timestamp: Date.now(),
       };
       setChatMessages(prev => [...prev, aiMsg]);
