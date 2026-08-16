@@ -13,6 +13,9 @@ export const useResumeEditor = (jobId?: string) => {
   const [isDirty, setIsDirty] = useState(false);
   const [lastSavedSkills, setLastSavedSkills] = useState<string[]>([]);
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  // Holds the last full AI-generated HTML document so it can be persisted to
+  // rendered_html on the next save. Cleared once the save succeeds.
+  const lastAIHTMLRef = useRef<string>('');
 
   const initContent = useCallback((text: string, skills: string[]) => {
     const cleanText = text.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
@@ -45,6 +48,8 @@ export const useResumeEditor = (jobId?: string) => {
 
       // Automatically apply generated HTML or full replacements to editorContent directly
       if (response.html) {
+        // Store the full HTML so saveContent can persist it to rendered_html
+        lastAIHTMLRef.current = response.html;
         setEditorContent(response.html);
         setIsDirty(true);
       } else if (response.full_resume_replacement) {
@@ -93,12 +98,18 @@ export const useResumeEditor = (jobId?: string) => {
     const textToSave = textOverride !== undefined ? textOverride : editorContent;
     if (!textToSave.trim() || isSaving) return null;
     setIsSaving(true);
+    // Capture and clear the pending AI HTML before the async call so a
+    // concurrent AI response cannot race and double-persist it.
+    const htmlToSave = lastAIHTMLRef.current || undefined;
+    lastAIHTMLRef.current = '';
     try {
-      const result = await saveResumeText(textToSave);
+      const result = await saveResumeText(textToSave, htmlToSave);
       setLastSavedSkills(result.skills);
       setIsDirty(false);
       return result;
     } catch (err) {
+      // Restore the ref so the next save attempt retries the HTML persist.
+      if (htmlToSave) lastAIHTMLRef.current = htmlToSave;
       console.error('Save failed:', err);
       return null;
     } finally {

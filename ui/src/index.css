@@ -398,50 +398,41 @@
 
 /* ─── Print / PDF Styles ──────────────────────────────────────────────────── */
 @media print {
-  .no-print,
-  #chat-panel,
-  #ats-score-bar,
-  header,
-  nav,
-  footer {
+  html, body, #root, main {
+    background: #ffffff !important;
+    color: #000000 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* Hide header, navigation, chat panel, buttons, and sidebars */
+  header, nav, footer, aside, button, #chat-panel, #ats-score-bar, .no-print {
     display: none !important;
   }
 
-  body, 
-  #root,
-  main,
-  .w-full,
+  /* Reset container layout so editor fills the page */
   .resume-editor-pane,
-  .flex.gap-4,
-  .flex.flex-col {
+  .flex,
+  .grid,
+  div {
+    box-shadow: none !important;
+    border: none !important;
     background: transparent !important;
-    height: auto !important;
-    min-height: unset !important;
-    overflow: visible !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    display: block !important;
-    width: 100% !important;
-    box-shadow: none !important;
-    border: none !important;
   }
 
-  .print-area {
-    background: white !important;
+  #resume-editor-canvas {
     display: block !important;
+    position: relative !important;
     width: 100% !important;
-    height: auto !important;
-    padding: 0 !important;
+    max-width: 100% !important;
     margin: 0 !important;
-  }
-
-  .editor-textarea {
-    display: block !important;
-    width: 100% !important;
-    height: auto !important;
-    box-shadow: none !important;
-    border: none !important;
-    background: white !important;
+    padding: 0 !important;
+    transform: none !important;
+    background: #ffffff !important;
+    color: #000000 !important;
   }
 
   * {
@@ -450,7 +441,7 @@
   }
 
   @page {
-    margin: 0;
+    margin: 4mm 6mm;
     size: letter;
   }
 }

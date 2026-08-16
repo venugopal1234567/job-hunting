@@ -95,7 +95,7 @@ const generatePrintHTML = (text: string, fitToPage: boolean = false): string => 
   if (parsed.workExperience.length > 0) {
     bodyHtml += `
     <section>
-        <h2>WORK EXPERIENCES</h2>
+        <h2>WORK EXPERIENCE</h2>
         ${parsed.workExperience.map(job => `
             <div class="job-title-container flex-between">
                 <div class="job-title">${formatJobTitleLine(job.title)}</div>
@@ -117,7 +117,7 @@ const generatePrintHTML = (text: string, fitToPage: boolean = false): string => 
   if (parsed.education.length > 0) {
     bodyHtml += `
     <section>
-        <h2>EDUCATIONS</h2>
+        <h2>EDUCATION</h2>
         ${parsed.education.map(edu => `
             <div class="flex-between" style="font-size: ${fitToPage ? '13.5px' : '14.5px'}; font-family: 'Times New Roman', Times, serif;">
                 <div><strong>${renderFormattedText(edu.institution)}</strong></div>
@@ -334,8 +334,27 @@ const generatePrintHTML = (text: string, fitToPage: boolean = false): string => 
             padding-right: 8px;
         }
         @media print {
-            body { padding: 0; margin: 0; max-width: 100%; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            .job-title-container, .company-container, section { page-break-inside: avoid; }
+            @page {
+                size: letter;
+                margin: ${fitToPage ? '4mm 6mm' : '10mm 12mm'};
+            }
+            body { 
+                padding: 0; 
+                margin: 0 auto; 
+                max-width: 100%; 
+                font-size: ${fitToPage ? '8.5pt' : '10pt'} !important; 
+                line-height: ${fitToPage ? '1.15' : '1.25'} !important; 
+                -webkit-print-color-adjust: exact; 
+                print-color-adjust: exact; 
+            }
+            h1 { font-size: ${fitToPage ? '14pt' : '18pt'} !important; }
+            h2 { font-size: ${fitToPage ? '9.5pt' : '11pt'} !important; margin-top: ${fitToPage ? '4px' : '8px'} !important; margin-bottom: ${fitToPage ? '2px' : '4px'} !important; }
+            p, li, td { font-size: ${fitToPage ? '8.5pt' : '9.5pt'} !important; }
+            ul { margin-bottom: ${fitToPage ? '2px' : '4px'} !important; }
+            li { margin-bottom: ${fitToPage ? '1px' : '2px'} !important; }
+            .tech-used { margin-bottom: ${fitToPage ? '2px' : '6px'} !important; }
+            .skills-table { margin-bottom: ${fitToPage ? '2px' : '6px'} !important; }
+            .job-title-container, .company-container { break-inside: avoid; page-break-inside: avoid; }
         }
     </style>
 </head>
@@ -440,7 +459,7 @@ function convertStructuredToText(sr: any): string {
 
   const work = sr.work_experience || sr.workExperience || [];
   if (work.length > 0) {
-    lines.push('WORK EXPERIENCES');
+    lines.push('WORK EXPERIENCE');
     work.forEach((job: any) => {
       const titleLine = `${job.title || ''} ${job.date ? job.date : ''}`.trim();
       if (titleLine) lines.push(titleLine);
@@ -462,7 +481,7 @@ function convertStructuredToText(sr: any): string {
 
   const edu = sr.education || [];
   if (edu.length > 0) {
-    lines.push('EDUCATIONS');
+    lines.push('EDUCATION');
     edu.forEach((e: any) => {
       const instLine = `${e.institution || ''} ${e.date ? e.date : ''}`.trim();
       if (instLine) lines.push(instLine);
@@ -697,7 +716,63 @@ function parseResumeStructure(text: string): ParsedResume {
 
 const formatResumeTextToHTML = (text: string, fitToPage: boolean = false): string => {
   if (!text) return '';
-  return renderEditorCanvasHTML(text, fitToPage);
+  let fullDoc = text;
+  if (!text.includes('<!DOCTYPE html>') && !text.includes('<html')) {
+    fullDoc = generatePrintHTML(text, fitToPage);
+  }
+
+  // Inject explicit formatting specifications for print output
+  const printOverrideCSS = `<style id="print-fit-override">
+@media print {
+    @page {
+        size: letter;
+        margin: 6mm 8mm !important;
+    }
+    html, body {
+        background: #fff !important;
+        color: #000 !important;
+        font-family: "Times New Roman", Times, serif !important;
+        font-size: 9.5px !important;
+        line-height: 1.25 !important;
+        padding: 0 !important;
+        margin: 0 auto !important;
+        max-width: 100% !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    header { margin-bottom: 6px !important; }
+    h1 { font-size: 22px !important; margin: 0 0 2px 0 !important; }
+    .subtitle { font-size: 13.5px !important; margin-bottom: 3px !important; }
+    .contact-info { font-size: 9.5px !important; gap: 8px !important; margin-top: 2px !important; }
+    .contact-info svg { width: 10px !important; height: 10px !important; }
+    h2 { 
+        font-size: 11.5px !important; 
+        margin-top: 8px !important; 
+        margin-bottom: 3px !important; 
+        padding-bottom: 1px !important;
+        border-bottom: 1px solid #000 !important;
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+    }
+    p { font-size: 9.5px !important; line-height: 1.25 !important; margin: 0 0 4px 0 !important; }
+    ul { margin: 2px 0 4px 0 !important; padding-left: 14px !important; font-size: 9.5px !important; }
+    ul li { margin-bottom: 2px !important; line-height: 1.2 !important; font-size: 9.5px !important; }
+    .job-title-container { margin-bottom: 0px !important; font-size: 10.5px !important; }
+    .job-title { font-size: 10.5px !important; }
+    .job-date { font-size: 9.5px !important; }
+    .company-container { font-size: 9.5px !important; margin-bottom: 2px !important; }
+    .tech-used { font-size: 9px !important; margin-top: 2px !important; margin-bottom: 8px !important; }
+    .edu-details { font-size: 9.5px !important; margin-top: 0px !important; margin-bottom: 6px !important; }
+    .skills-table { font-size: 9.5px !important; margin-bottom: 6px !important; width: 100% !important; }
+    .skills-table td { padding: 1.5px 0 !important; font-size: 9.5px !important; }
+    section, .job-title-container, .company-container { page-break-inside: auto !important; break-inside: auto !important; }
+}
+</style>`;
+
+  if (fullDoc.includes('</head>')) {
+    return fullDoc.replace('</head>', printOverrideCSS + '</head>');
+  }
+  return printOverrideCSS + fullDoc;
 };
 
 interface MatchResult {
@@ -826,7 +901,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
   const [activeSubTab, setActiveSubTab] = useState<'editor' | 'pdf'>('editor');
   const [hasPDF, setHasPDF] = useState(false);
   const [activeModel, setActiveModel] = useState<string>('');
-  const [fitToSinglePage, setFitToSinglePage] = useState(false);
+  const [fitToSinglePage, setFitToSinglePage] = useState(true);
   const [exportingPDF, setExportingPDF] = useState(false);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -947,23 +1022,30 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
     await saveContent(text);
   }, [applyFullResume, saveContent]);
 
-  const handleExportPDF = async () => {
-    setExportingPDF(true);
-    try {
-      const blob = await exportResumePDF(editorContent, fitToSinglePage);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'Venugopal_Hegde_Resume.pdf';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('Failed to export PDF:', err);
-      alert('Failed to generate PDF: ' + (err instanceof Error ? err.message : String(err)));
-    } finally {
-      setExportingPDF(false);
+  const handleExportPDF = () => {
+    const fullHTML = formatResumeTextToHTML(editorContent, fitToSinglePage);
+
+    const printFrame = document.createElement('iframe');
+    printFrame.style.position = 'fixed';
+    printFrame.style.right = '0';
+    printFrame.style.bottom = '0';
+    printFrame.style.width = '0';
+    printFrame.style.height = '0';
+    printFrame.style.border = '0';
+    document.body.appendChild(printFrame);
+
+    const frameDoc = printFrame.contentWindow?.document;
+    if (frameDoc) {
+      frameDoc.open();
+      frameDoc.write(fullHTML);
+      frameDoc.close();
+      setTimeout(() => {
+        printFrame.contentWindow?.focus();
+        printFrame.contentWindow?.print();
+        setTimeout(() => {
+          document.body.removeChild(printFrame);
+        }, 1000);
+      }, 250);
     }
   };
 
@@ -1199,7 +1281,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
                   }
                 }}
                 dangerouslySetInnerHTML={{ 
-                  __html: formatResumeTextToHTML(editorContent, fitToSinglePage) 
+                  __html: renderEditorCanvasHTML(editorContent, fitToSinglePage) 
                 }}
                 className={`editor-textarea bg-white text-slate-800 shadow-2xl rounded-sm mx-auto flex-shrink-0 ${fitToSinglePage ? 'fit-page' : ''}`}
                 style={{

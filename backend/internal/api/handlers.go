@@ -8,9 +8,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
-	"os/exec"
-	"regexp"
 	"remotehunter/internal/ai"
 	"remotehunter/internal/models"
 	"remotehunter/internal/resume"
@@ -651,6 +648,7 @@ func (h *Handler) GetResumeFullText(c *gin.Context) {
 func (h *Handler) UpdateResumeText(c *gin.Context) {
 	var body struct {
 		Text string `json:"text"`
+		HTML string `json:"html"` // optional: full AI-generated HTML document
 	}
 	if err := c.ShouldBindJSON(&body); err != nil || body.Text == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "text field required"})
@@ -661,11 +659,18 @@ func (h *Handler) UpdateResumeText(c *gin.Context) {
 	skills := resume.ExtractSkills(body.Text)
 	skillsJSON, _ := json.Marshal(skills)
 
+	// Persist rendered_html when provided; NULL it out when the user manually edits
+	// (plain-text save with no html = user changed content, old HTML is stale)
+	var htmlArg interface{} = nil
+	if strings.TrimSpace(body.HTML) != "" {
+		htmlArg = strings.TrimSpace(body.HTML)
+	}
+
 	var id string
 	err := h.db.QueryRow(`
-		UPDATE resumes SET edited_text = $1, extracted_skills = $2
+		UPDATE resumes SET edited_text = $1, extracted_skills = $2, rendered_html = $3
 		WHERE is_active = TRUE
-		RETURNING id`, body.Text, string(skillsJSON)).
+		RETURNING id`, body.Text, string(skillsJSON), htmlArg).
 		Scan(&id)
 
 	if err != nil {
@@ -713,10 +718,19 @@ func (h *Handler) RevertResumeText(c *gin.Context) {
 	model := h.getActiveModel()
 	structRes, templateHTML, err := h.aiClient.ConvertResumeToTemplate(rawText, model, false)
 	if err != nil || structRes == nil {
-		log.Printf("[Handler] RevertResumeText AI conversion error: %v, using fallback parser", err)
-		structRes = parseResumeStructureToGo(rawText)
-		templateHTML = ai.BuildATSTemplateHTML(structRes, false)
+		log.Printf("[Handler] RevertResumeText AI conversion error: %v", err)
+		// Return raw text without HTML — frontend renders it as plain text
+		c.JSON(http.StatusOK, gin.H{
+			"id":      id,
+			"text":    rawText,
+			"skills":  skills,
+			"message": "reverted (AI template generation unavailable)",
+		})
+		return
 	}
+
+	// Save the AI-generated HTML so ExportResumePDF can use it directly
+	h.db.Exec(`UPDATE resumes SET rendered_html = $1 WHERE id = $2`, templateHTML, id)
 
 	c.JSON(http.StatusOK, gin.H{
 		"id":      id,
@@ -967,401 +981,22 @@ func (h *Handler) ConvertResumeTemplate(c *gin.Context) {
 		modelOverride = h.getActiveModel()
 	}
 
-	// Try AI conversion
+	// AI conversion — no regex fallback
 	structRes, htmlContent, err := h.aiClient.ConvertResumeToTemplate(rawText, modelOverride, body.FitSinglePage)
 	if err != nil || structRes == nil {
-		log.Printf("[Handler] ConvertResumeTemplate AI error: %v, using fallback parser", err)
-		structRes = parseResumeStructureToGo(rawText)
-		htmlContent = ai.BuildATSTemplateHTML(structRes, body.FitSinglePage)
+		log.Printf("[Handler] ConvertResumeTemplate AI error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "AI template conversion failed; please retry"})
+		return
 	}
+
+	// Persist the rendered HTML for direct PDF use
+	h.db.Exec(`UPDATE resumes SET rendered_html = $1 WHERE is_active = TRUE`, htmlContent)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"html":    htmlContent,
 		"parsed":  structRes,
 	})
-}
-
-// ─────────────────────────────────────────────────────
-// POST/GET /resume/export-pdf — Render resume HTML into crisp PDF using headless chromium
-// ─────────────────────────────────────────────────────
-
-func getChromiumBinary() string {
-	paths := []string{
-		"/snap/bin/chromium",
-		"/usr/bin/chromium",
-		"/usr/bin/chromium-browser",
-		"/usr/bin/google-chrome",
-		"/usr/bin/google-chrome-stable",
-	}
-	for _, p := range paths {
-		if _, err := os.Stat(p); err == nil {
-			return p
-		}
-	}
-	if path, err := exec.LookPath("chromium"); err == nil {
-		return path
-	}
-	return ""
-}
-
-func (h *Handler) ExportResumePDF(c *gin.Context) {
-	var body struct {
-		Text          string `json:"text"`
-		Model         string `json:"model"`
-		FitSinglePage bool   `json:"fit_single_page"`
-	}
-	_ = c.ShouldBindJSON(&body)
-
-	rawText := body.Text
-	if strings.TrimSpace(rawText) == "" {
-		err := h.db.QueryRow(`
-			SELECT COALESCE(edited_text, raw_text) 
-			FROM resumes 
-			WHERE is_active = TRUE 
-			ORDER BY uploaded_at DESC 
-			LIMIT 1`).Scan(&rawText)
-		if err != nil || strings.TrimSpace(rawText) == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "no active resume text available"})
-			return
-		}
-	}
-
-	structRes := parseResumeStructureToGo(rawText)
-	htmlContent := ai.BuildATSTemplateHTML(structRes, body.FitSinglePage)
-
-	tmpHTMLFile, err := os.CreateTemp("", "resume_*.html")
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create temp html file"})
-		return
-	}
-	defer os.Remove(tmpHTMLFile.Name())
-
-	if _, err := tmpHTMLFile.WriteString(htmlContent); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to write html content"})
-		return
-	}
-	tmpHTMLFile.Close()
-
-	tmpPDFFile, err := os.CreateTemp("", "resume_*.pdf")
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create temp pdf file"})
-		return
-	}
-	pdfPath := tmpPDFFile.Name()
-	tmpPDFFile.Close()
-	defer os.Remove(pdfPath)
-
-	chromBin := getChromiumBinary()
-	if chromBin == "" {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "chromium binary not found on server"})
-		return
-	}
-
-	cmd := exec.Command(chromBin,
-		"--headless",
-		"--disable-gpu",
-		"--no-sandbox",
-		"--print-to-pdf="+pdfPath,
-		tmpHTMLFile.Name(),
-	)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		log.Printf("[Handler] ExportResumePDF chromium error: %v, stderr: %s", err, stderr.String())
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate PDF: " + err.Error()})
-		return
-	}
-
-	pdfBytes, err := os.ReadFile(pdfPath)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read generated PDF"})
-		return
-	}
-
-	c.Header("Content-Type", "application/pdf")
-	c.Header("Content-Disposition", "attachment; filename=\"Venugopal_Hegde_Resume.pdf\"")
-	c.Header("Content-Length", fmt.Sprintf("%d", len(pdfBytes)))
-	c.Writer.Write(pdfBytes)
-}
-
-func parseResumeStructureToGo(text string) *models.StructuredResume {
-	reCite := regexp.MustCompile(`\[cite:\s*\d+\]`)
-	text = reCite.ReplaceAllString(text, "")
-
-	lines := strings.Split(text, "\n")
-	res := &models.StructuredResume{
-		ContactItems:   []string{},
-		WorkExperience: []models.JobExperience{},
-		Education:      []models.EducationItem{},
-		Skills:         []models.SkillCategory{},
-	}
-
-	var nonCols []string
-	for _, l := range lines {
-		l = strings.TrimSpace(l)
-		if l != "" {
-			nonCols = append(nonCols, l)
-		}
-	}
-	if len(nonCols) == 0 {
-		return res
-	}
-
-	res.Name = nonCols[0]
-	idx := 1
-
-	reEmail := regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`)
-	rePhone := regexp.MustCompile(`(?:\+?\d{1,3}[\s-]?)?\(?\d{3,5}\)?[\s-]?\d{3,5}[\s-]?\d{3,5}`)
-	reTitle := regexp.MustCompile(`(?i)^([A-Za-z\s,\(\)\/-]+?(?:Engineer|Developer|Architect|Manager|Lead|Specialist|Consultant|Scientist|Designer|Analyst|Programmer))\s*(?=\+?\d|[\w.-]+@|[A-Z][a-z]+,|$)`)
-
-	for idx < len(nonCols) {
-		line := nonCols[idx]
-		if isSectionHeaderLine(line) {
-			break
-		}
-		hasEmail := reEmail.MatchString(line)
-		hasPhone := rePhone.MatchString(line)
-
-		if res.Title == "" && !hasEmail && !hasPhone && !strings.Contains(line, "|") && len(line) < 80 {
-			res.Title = line
-		} else {
-			workLine := line
-			if tm := reTitle.FindStringSubmatch(workLine); len(tm) > 1 && res.Title == "" {
-				res.Title = strings.TrimSpace(tm[1])
-				workLine = strings.TrimSpace(workLine[len(tm[0]):])
-			}
-			if em := reEmail.FindString(workLine); em != "" {
-				res.ContactItems = append(res.ContactItems, em)
-				workLine = strings.TrimSpace(strings.Replace(workLine, em, " ", 1))
-			}
-			if pm := rePhone.FindString(workLine); pm != "" {
-				res.ContactItems = append(res.ContactItems, pm)
-				workLine = strings.TrimSpace(strings.Replace(workLine, pm, " ", 1))
-			}
-			parts := strings.Split(workLine, "|")
-			for _, p := range parts {
-				p = strings.TrimSpace(p)
-				if p != "" && !containsString(res.ContactItems, p) {
-					res.ContactItems = append(res.ContactItems, p)
-				}
-			}
-		}
-		idx++
-	}
-
-	currentSection := ""
-	var currentJob *models.JobExperience
-	var currentEdu *models.EducationItem
-
-	fullRangeRx := regexp.MustCompile(`(?i)((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d{4})[-–\s\u2013\u2014]+(?:Present|\d{4}|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))`)
-	endsWithDateRx := regexp.MustCompile(`(?i)((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d{4}))\s*$`)
-
-	for ; idx < len(nonCols); idx++ {
-		line := nonCols[idx]
-		if isSectionHeaderLine(line) {
-			if currentJob != nil {
-				res.WorkExperience = append(res.WorkExperience, *currentJob)
-				currentJob = nil
-			}
-			if currentEdu != nil {
-				res.Education = append(res.Education, *currentEdu)
-				currentEdu = nil
-			}
-			upper := strings.ToUpper(line)
-			if strings.Contains(upper, "SUMMARY") {
-				currentSection = "SUMMARY"
-			} else if strings.Contains(upper, "SKILL") {
-				currentSection = "SKILLS"
-			} else if strings.Contains(upper, "WORK") || strings.Contains(upper, "EXPERIENCE") {
-				currentSection = "WORK"
-			} else if strings.Contains(upper, "EDU") {
-				currentSection = "EDUCATION"
-			} else {
-				currentSection = line
-			}
-			continue
-		}
-
-		switch currentSection {
-		case "SUMMARY":
-			if res.Summary == "" {
-				res.Summary = line
-			} else {
-				res.Summary += " " + line
-			}
-		case "SKILLS":
-			if strings.Contains(line, ":") {
-				parts := strings.SplitN(line, ":", 2)
-				cat := strings.TrimSpace(parts[0])
-				items := strings.TrimSpace(parts[1])
-				res.Skills = append(res.Skills, models.SkillCategory{
-					Category: cat,
-					Items:    items,
-				})
-			} else if len(res.Skills) > 0 && res.Skills[len(res.Skills)-1].Items == "" {
-				txt := strings.TrimLeft(line, "•-*▪◦ ")
-				res.Skills[len(res.Skills)-1].Items = txt
-			} else {
-				txt := strings.TrimLeft(line, "•-*▪◦ ")
-				res.Skills = append(res.Skills, models.SkillCategory{
-					Category: "Key Skills",
-					Items:    txt,
-				})
-			}
-		case "WORK":
-			if strings.HasPrefix(strings.ToLower(line), "technologies") {
-				if currentJob != nil {
-					tech := line
-					if idx := strings.Index(line, ":"); idx >= 0 {
-						tech = strings.TrimSpace(line[idx+1:])
-					}
-					currentJob.TechStack = tech
-				}
-				continue
-			}
-
-			fullDm := fullRangeRx.FindStringSubmatch(line)
-			endDm := endsWithDateRx.FindStringSubmatch(line)
-
-			if currentJob != nil && currentJob.Date != "" && !strings.Contains(currentJob.Date, "-") && !strings.Contains(currentJob.Date, "Present") && len(endDm) > 1 {
-				endDate := endDm[1]
-				currentJob.Date = currentJob.Date + " - " + endDate
-				comp := strings.TrimSpace(endsWithDateRx.ReplaceAllString(line, ""))
-				if comp != "" {
-					currentJob.Company = comp
-				}
-				continue
-			}
-
-			if currentJob != nil && currentJob.Title != "" && currentJob.Date == "" && currentJob.Company == "" && len(fullDm) > 1 {
-				currentJob.Date = fullDm[1]
-				currentJob.Company = strings.TrimSpace(strings.TrimRight(fullRangeRx.ReplaceAllString(line, ""), " |–—-"))
-				continue
-			}
-
-			if len(fullDm) > 0 && len(line) < 130 && !strings.HasPrefix(line, "•") {
-				if currentJob != nil {
-					res.WorkExperience = append(res.WorkExperience, *currentJob)
-				}
-				date := fullDm[1]
-				title := strings.TrimSpace(strings.TrimRight(fullRangeRx.ReplaceAllString(line, ""), " |–—-"))
-				currentJob = &models.JobExperience{
-					Title:   title,
-					Date:    date,
-					Bullets: []string{},
-				}
-			} else if len(endDm) > 0 && len(line) < 100 && (currentJob == nil || len(currentJob.Bullets) == 0) && !strings.HasPrefix(line, "•") {
-				if currentJob != nil {
-					res.WorkExperience = append(res.WorkExperience, *currentJob)
-				}
-				date := endDm[1]
-				title := strings.TrimSpace(strings.TrimRight(endsWithDateRx.ReplaceAllString(line, ""), " |–—-"))
-				currentJob = &models.JobExperience{
-					Title:   title,
-					Date:    date,
-					Bullets: []string{},
-				}
-			} else if currentJob != nil && currentJob.Company == "" && (strings.Contains(line, "|") || strings.Contains(line, " - ") || strings.Contains(line, "–") || strings.Contains(strings.ToLower(line), "full time") || strings.Contains(strings.ToLower(line), "remote")) {
-				parts := strings.FieldsFunc(line, func(r rune) bool {
-					return r == '|' || r == '-' || r == '–'
-				})
-				if len(parts) >= 2 {
-					currentJob.Company = strings.TrimSpace(parts[0])
-					currentJob.Location = strings.TrimSpace(parts[1])
-				} else {
-					currentJob.Location = line
-				}
-			} else if currentJob != nil && currentJob.Location == "" && (strings.Contains(strings.ToLower(line), "full time") || strings.Contains(strings.ToLower(line), "remote") || strings.Contains(line, "India")) {
-				currentJob.Location = line
-			} else if currentJob != nil {
-				txt := strings.TrimLeft(line, "•-*▪◦ ")
-				if txt != "" {
-					currentJob.Bullets = append(currentJob.Bullets, txt)
-				}
-			} else {
-				currentJob = &models.JobExperience{
-					Title:   line,
-					Bullets: []string{},
-				}
-			}
-		case "EDUCATION":
-			dm := fullRangeRx.FindStringSubmatch(line)
-			if currentEdu != nil && currentEdu.Date == "" && len(dm) > 0 {
-				currentEdu.Date = dm[1]
-				deg := strings.TrimSpace(fullRangeRx.ReplaceAllString(line, ""))
-				if deg != "" {
-					currentEdu.Degree = deg
-				}
-			} else if len(dm) > 0 {
-				if currentEdu != nil {
-					res.Education = append(res.Education, *currentEdu)
-				}
-				date := dm[1]
-				inst := strings.TrimSpace(strings.TrimRight(fullRangeRx.ReplaceAllString(line, ""), " |–—-"))
-				currentEdu = &models.EducationItem{
-					Institution: inst,
-					Date:        date,
-				}
-			} else if currentEdu != nil {
-				if currentEdu.Degree == "" {
-					currentEdu.Degree = line
-				} else {
-					currentEdu.Degree += " " + line
-				}
-			} else {
-				currentEdu = &models.EducationItem{
-					Institution: line,
-				}
-			}
-		}
-	}
-
-	if currentJob != nil {
-		res.WorkExperience = append(res.WorkExperience, *currentJob)
-	}
-	if currentEdu != nil {
-		res.Education = append(res.Education, *currentEdu)
-	}
-
-	var validSkills []models.SkillCategory
-	for _, s := range res.Skills {
-		if strings.TrimSpace(s.Items) != "" {
-			validSkills = append(validSkills, s)
-		}
-	}
-	res.Skills = validSkills
-
-	if len(res.Skills) == 0 {
-		res.Skills = []models.SkillCategory{
-			{Category: "Programming Languages", Items: "Go (Golang), Python, TypeScript, SQL, Shell Scripting"},
-			{Category: "Cloud, Automation & Infrastructure", Items: "AWS, Azure, GCP, Docker, Kubernetes, Helm, Terraform, CI/CD, Ollama"},
-			{Category: "Data & Streaming", Items: "Redis, MongoDB, PostgreSQL, Google Pub/Sub, NATS, Kafka, gRPC, REST APIs, WebSocket"},
-			{Category: "Practices & Tools", Items: "Test-Driven Development (TDD), Microservices Architecture, Event-Driven Architecture, System Design, Git, Mocha, SLB OSDU Data Platform"},
-		}
-	}
-
-	return res
-}
-
-func containsString(slice []string, s string) bool {
-	for _, item := range slice {
-		if item == s {
-			return true
-		}
-	}
-	return false
-}
-
-func isSectionHeaderLine(line string) bool {
-	upper := strings.ToUpper(strings.TrimSpace(line))
-	headers := []string{"PROFESSIONAL SUMMARY", "SUMMARY", "WORK EXPERIENCES", "WORK EXPERIENCE", "EXPERIENCE", "SKILLS", "TECHNICAL SKILLS", "EDUCATIONS", "EDUCATION", "PROJECTS", "CERTIFICATIONS"}
-	for _, h := range headers {
-		if upper == h {
-			return true
-		}
-	}
-	return len(line) < 40 && line == upper && !strings.Contains(line, "|") && !strings.Contains(line, "@") && len(line) > 3
 }
 
 

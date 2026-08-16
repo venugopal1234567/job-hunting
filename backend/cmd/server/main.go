@@ -2,6 +2,9 @@ package main
 
 import (
 	"log"
+	"net/http"
+	"time"
+
 	"remotehunter/internal/ai"
 	"remotehunter/internal/api"
 	"remotehunter/internal/config"
@@ -37,11 +40,19 @@ func main() {
 	scheduler.Start()
 	defer scheduler.Stop()
 
-	// Setup HTTP router and start server
+	// Setup HTTP router and start server with extended timeouts (10 mins for AI requests)
 	router := api.SetupRouter(api.NewHandler(database, aiClient, scheduler))
 
+	server := &http.Server{
+		Addr:         ":" + cfg.Server.Port,
+		Handler:      router,
+		ReadTimeout:  10 * time.Minute,
+		WriteTimeout: 10 * time.Minute,
+		IdleTimeout:  10 * time.Minute,
+	}
+
 	log.Printf("[Main] Server listening on 0.0.0.0:%s", cfg.Server.Port)
-	if err := router.Run(":" + cfg.Server.Port); err != nil {
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("[Main] Server failed: %v", err)
 	}
 }

@@ -35,7 +35,7 @@ func NewClient(nvidiaAPIKey, nvidiaBaseURL, nvidiaModel string) *Client {
 		nvidiaBaseURL: nvidiaBaseURL,
 		nvidiaModel:   nvidiaModel,
 		httpClient: &http.Client{
-			Timeout: 300 * time.Second,
+			Timeout: 600 * time.Second,
 		},
 	}
 }
@@ -459,7 +459,7 @@ Respond ONLY with a valid JSON object matching exactly this schema:
 CRITICAL RULES & CONSTRAINTS:
 - MANDATORY ZERO WORK EXPERIENCE LOSS: You MUST preserve EVERY SINGLE work experience entry and company from the candidate's original resume. NEVER delete, omit, or strip off any company or job role (e.g., EPAM Systems Backend Developer, EPAM Systems Portability Engineer, and InTimeTec GoLang Developer MUST ALL BE INCLUDED).
 - PRESERVE OFFICIAL JOB TITLES & NO HALLUCINATIONS: Keep the exact official job titles from the candidate's original resume (e.g. "Senior Software Development Engineer"). Do NOT change official job titles to match the target job title (e.g., do NOT change "Senior Software Development Engineer" to "Senior Golang Developer"). Do NOT invent fake technical details or assign tools to specific roles where they were not listed in the original source text.
-- SECTION ORDERING IS MANDATORY: 1. Professional Summary, 2. Work Experiences, 3. Educations, 4. Skills.
+- SECTION ORDERING IS MANDATORY: 1. Professional Summary, 2. Work Experience, 3. Education, 4. Skills.
 - MANDATORY KEYWORD BOLDING ACROSS ALL SECTIONS: In "summary", "work_experience" (both bullet points and tech_stack), and "skills", you MUST wrap the high-value technical keywords, frameworks, databases, and core skills that match the target Job Description in markdown bold syntax (for example: **Go**, **Kubernetes**, **client-go**, **controller-runtime**, **NATS**, **gRPC**, **PostgreSQL**, **Redis**, **Distributed Tracing**, **TDD**).
 - BULLET POINT VERBS: Every bullet point in work_experience MUST also start with a strong bold action verb (e.g. **Architected**, **Spearheaded**, **Developed**, **Built**, **Optimized**).
 - Do NOT bold arbitrary words or whole filler phrases. Bold ONLY the action verbs and the specific high-value Job Description keywords.
@@ -964,7 +964,7 @@ func BuildATSTemplateHTML(sr *models.StructuredResume, fitSinglePage ...bool) st
 		sb.WriteString(`
 
     <section>
-        <h2>WORK EXPERIENCES</h2>`)
+        <h2>WORK EXPERIENCE</h2>`)
 		for _, job := range sr.WorkExperience {
 			sb.WriteString(`
         <div class="job-title-container flex-between">
@@ -1017,7 +1017,7 @@ func BuildATSTemplateHTML(sr *models.StructuredResume, fitSinglePage ...bool) st
 		sb.WriteString(`
 
     <section>
-        <h2>EDUCATIONS</h2>`)
+        <h2>EDUCATION</h2>`)
 		for _, edu := range sr.Education {
 			sb.WriteString(fmt.Sprintf(`
         <div class="flex-between" style="font-size: %s; font-family: 'Times New Roman', Times, serif;">

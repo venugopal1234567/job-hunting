@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS resumes (
 
 ALTER TABLE resumes ADD COLUMN IF NOT EXISTS edited_text TEXT;
 ALTER TABLE resumes ADD COLUMN IF NOT EXISTS pdf_data BYTEA;
+ALTER TABLE resumes ADD COLUMN IF NOT EXISTS rendered_html TEXT;
 
 -- 4b. Resume Versions Table (applied snapshots)
 CREATE TABLE IF NOT EXISTS resume_versions (

@@ -5,7 +5,7 @@ const BASE_URL = '/api/v1';
 
 const api = axios.create({
   baseURL: BASE_URL,
-  timeout: 120_000,
+  timeout: 600_000,
   headers: { 'Content-Type': 'application/json' },
 });
 
@@ -65,8 +65,13 @@ export const getResumeFullText = async (): Promise<{ id: string; text: string; h
   }
 };
 
-export const saveResumeText = async (text: string): Promise<{ id: string; skills: string[]; message: string }> => {
-  const { data } = await api.put('/resume/active', { text });
+export const saveResumeText = async (
+  text: string,
+  html?: string
+): Promise<{ id: string; skills: string[]; message: string }> => {
+  const payload: Record<string, string> = { text };
+  if (html) payload.html = html;
+  const { data } = await api.put('/resume/active', payload);
   return data;
 };
 
