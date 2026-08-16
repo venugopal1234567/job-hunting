@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Loader2, FileText } from 'lucide-react';
 import { Job } from '../../types';
-import { getResumeFullText, getActiveResume, analyzeJob, uploadResume } from '../../services/api';
+import { getResumeFullText, getActiveResume, analyzeJob, uploadResume, convertResumeToTemplate } from '../../services/api';
 import { useResumeEditor } from '../../hooks/useResumeEditor';
 import ChatPanel from './ChatPanel';
 import AppliedDialog from './AppliedDialog';
@@ -20,6 +20,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
     chatMessages,
     isChatLoading,
     isSaving,
+    isReverting,
     isDirty,
     initContent,
     updateContent,
@@ -45,6 +46,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
   const [activeModel, setActiveModel] = useState<string>('');
   const [fitToSinglePage, setFitToSinglePage] = useState(true);
   const [exportingPDF] = useState(false);
+  const [isConvertingLayout, setIsConvertingLayout] = useState(false);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -164,6 +166,25 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
     await saveContent(text);
   }, [applyFullResume, saveContent]);
 
+  const handleConvertToNewLayout = useCallback(async () => {
+    setIsConvertingLayout(true);
+    try {
+      const result = await convertResumeToTemplate(undefined, activeModel, fitToSinglePage);
+      if (result && result.html) {
+        applyFullResume(result.html);
+        await saveContent(result.html);
+        setActiveSubTab('editor');
+        setSaveMessage('Converted to Standard Layout!');
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = setTimeout(() => setSaveMessage(''), 3000);
+      }
+    } catch (err: any) {
+      alert('Failed to convert layout: ' + (err?.response?.data?.error || err.message || String(err)));
+    } finally {
+      setIsConvertingLayout(false);
+    }
+  }, [activeModel, fitToSinglePage, applyFullResume, saveContent]);
+
   const handleExportPDF = () => {
     const fullHTML = formatResumeTextToHTML(editorContent, fitToSinglePage);
 
@@ -243,7 +264,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
           </p>
         </div>
         <div className="glass rounded-xl p-6">
-          <ResumeUploader />
+          <ResumeUploader onResumeUploaded={handleResumeUploaded} />
         </div>
       </div>
     );
@@ -271,12 +292,15 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
         fitToSinglePage={fitToSinglePage}
         onToggleFitToSinglePage={() => setFitToSinglePage(!fitToSinglePage)}
         isSaving={isSaving}
+        isReverting={isReverting}
         onRevert={handleRevert}
         exportingPDF={exportingPDF}
         onExportPDF={handleExportPDF}
         chatVisible={chatVisible}
         onToggleChat={() => setChatVisible(!chatVisible)}
         onUploadClick={() => uploadInputRef.current?.click()}
+        onConvertToNewLayout={handleConvertToNewLayout}
+        isConvertingLayout={isConvertingLayout}
       />
 
       {/* 50/50 Split Workspace Grid */}
@@ -307,6 +331,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
           canvasScale={canvasScale}
           hasPDF={hasPDF}
           onUploadClick={() => uploadInputRef.current?.click()}
+          onConvertToNewLayout={handleConvertToNewLayout}
+          isConvertingLayout={isConvertingLayout}
         />
       </div>
 

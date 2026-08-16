@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 	"path/filepath"
@@ -16,7 +17,10 @@ import (
 
 // POST /resume/upload
 func (h *Handler) UploadResume(c *gin.Context) {
-	fileHeader, err := c.FormFile("resume")
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		fileHeader, err = c.FormFile("resume")
+	}
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No resume file uploaded"})
 		return
@@ -58,6 +62,10 @@ func (h *Handler) UploadResume(c *gin.Context) {
 		UploadedAt:      time.Now(),
 		IsActive:        true,
 	}
+	if ext == ".pdf" {
+		resObj.PDFBytes = fileBytes
+		resObj.HasPDF = true
+	}
 
 	if err := h.resumeRepo.SaveResume(c.Request.Context(), resObj); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save resume: " + err.Error()})
@@ -95,6 +103,14 @@ func (h *Handler) GetActiveResumePDF(c *gin.Context) {
 		return
 	}
 
+	if len(resObj.PDFBytes) > 0 {
+		c.Header("Content-Type", "application/pdf")
+		c.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", resObj.Filename))
+		c.Data(http.StatusOK, "application/pdf", resObj.PDFBytes)
+		return
+	}
+
+	// Fallback to dynamic PDF rendering if no raw PDF bytes stored
 	activeModel := h.getActiveModelWithContext(ctx)
 	_, htmlContent, err := h.aiClient.ConvertResumeToTemplate(resObj.RawText, activeModel, false)
 	if err != nil {
@@ -114,7 +130,7 @@ func (h *Handler) GetActiveResumePDF(c *gin.Context) {
 	}
 
 	c.Header("Content-Type", "application/pdf")
-	c.Header("Content-Disposition", "attachment; filename=\"Active_Resume.pdf\"")
+	c.Header("Content-Disposition", "inline; filename=\"Active_Resume.pdf\"")
 	c.Data(http.StatusOK, "application/pdf", pdfBytes)
 }
 

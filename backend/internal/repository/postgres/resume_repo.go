@@ -23,13 +23,14 @@ func NewResumeRepo(db *sql.DB) repository.ResumeRepository {
 func (r *ResumeRepo) GetActiveResume(ctx context.Context) (*models.Resume, error) {
 	var res models.Resume
 	var rawText, editedText sql.NullString
+	var pdfBytes []byte
 	var skillsJSON []byte
 	var uploadedAt time.Time
 	err := r.db.QueryRowContext(ctx, `
-		SELECT id, filename, raw_text, edited_text, extracted_skills, uploaded_at, is_active
+		SELECT id, filename, raw_text, edited_text, pdf_data, extracted_skills, uploaded_at, is_active
 		FROM resumes WHERE is_active = true ORDER BY uploaded_at DESC LIMIT 1
 	`).Scan(
-		&res.ID, &res.Filename, &rawText, &editedText,
+		&res.ID, &res.Filename, &rawText, &editedText, &pdfBytes,
 		&skillsJSON, &uploadedAt, &res.IsActive,
 	)
 	if err == sql.ErrNoRows {
@@ -43,6 +44,11 @@ func (r *ResumeRepo) GetActiveResume(ctx context.Context) (*models.Resume, error
 		res.RawText = editedText.String
 	} else if rawText.Valid {
 		res.RawText = rawText.String
+	}
+
+	if len(pdfBytes) > 0 {
+		res.HasPDF = true
+		res.PDFBytes = pdfBytes
 	}
 
 	if len(skillsJSON) > 0 {
@@ -81,10 +87,10 @@ func (r *ResumeRepo) SaveResume(ctx context.Context, resume *models.Resume) erro
 	skillsJSON, _ := json.Marshal(resume.ExtractedSkills)
 	now := time.Now()
 	err = tx.QueryRowContext(ctx, `
-		INSERT INTO resumes (id, filename, raw_text, extracted_skills, is_active, uploaded_at)
-		VALUES ($1, $2, $3, $4, true, $5)
+		INSERT INTO resumes (id, filename, raw_text, pdf_data, extracted_skills, is_active, uploaded_at)
+		VALUES ($1, $2, $3, $4, $5, true, $6)
 		RETURNING id
-	`, resume.ID, resume.Filename, resume.RawText, skillsJSON, now).Scan(&resume.ID)
+	`, resume.ID, resume.Filename, resume.RawText, resume.PDFBytes, skillsJSON, now).Scan(&resume.ID)
 	if err != nil {
 		return err
 	}

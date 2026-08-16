@@ -2,7 +2,11 @@ import React, { useCallback, useState } from 'react';
 import { Upload, FileText, CheckCircle2, AlertCircle, X, Loader2 } from 'lucide-react';
 import { useResume } from '../../hooks/useResume';
 
-const ResumeUploader: React.FC = () => {
+interface ResumeUploaderProps {
+  onResumeUploaded?: () => void;
+}
+
+const ResumeUploader: React.FC<ResumeUploaderProps> = ({ onResumeUploaded }) => {
   const { resume, loading, uploading, error, upload, refresh } = useResume();
   const [dragOver, setDragOver] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
@@ -12,6 +16,9 @@ const ResumeUploader: React.FC = () => {
     try {
       await upload(file);
       setUploadSuccess(true);
+      if (onResumeUploaded) {
+        onResumeUploaded();
+      }
       setTimeout(() => setUploadSuccess(false), 3000);
     } catch {}
   };

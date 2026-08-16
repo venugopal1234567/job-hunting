@@ -10,11 +10,10 @@ export const useResumeEditor = (jobId?: string) => {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isReverting, setIsReverting] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [lastSavedSkills, setLastSavedSkills] = useState<string[]>([]);
   const editorRef = useRef<HTMLTextAreaElement>(null);
-  // Holds the last full AI-generated HTML document so it can be persisted to
-  // rendered_html on the next save. Cleared once the save succeeds.
   const lastAIHTMLRef = useRef<string>('');
 
   const initContent = useCallback((text: string, skills: string[]) => {
@@ -39,16 +38,13 @@ export const useResumeEditor = (jobId?: string) => {
       content: userText,
       timestamp: Date.now(),
     };
-    // Reset chat session and start fresh
     setChatMessages([userMsg]);
     setIsChatLoading(true);
 
     try {
       const response = await chatWithResume(userText, editorContent, jobId, model);
 
-      // Automatically apply generated HTML or full replacements to editorContent directly
       if (response.html) {
-        // Store the full HTML so saveContent can persist it to rendered_html
         lastAIHTMLRef.current = response.html;
         setEditorContent(response.html);
         setIsDirty(true);
@@ -98,8 +94,6 @@ export const useResumeEditor = (jobId?: string) => {
     const textToSave = textOverride !== undefined ? textOverride : editorContent;
     if (!textToSave.trim() || isSaving) return null;
     setIsSaving(true);
-    // Capture and clear the pending AI HTML before the async call so a
-    // concurrent AI response cannot race and double-persist it.
     const htmlToSave = lastAIHTMLRef.current || undefined;
     lastAIHTMLRef.current = '';
     try {
@@ -108,7 +102,6 @@ export const useResumeEditor = (jobId?: string) => {
       setIsDirty(false);
       return result;
     } catch (err) {
-      // Restore the ref so the next save attempt retries the HTML persist.
       if (htmlToSave) lastAIHTMLRef.current = htmlToSave;
       console.error('Save failed:', err);
       return null;
@@ -134,7 +127,7 @@ export const useResumeEditor = (jobId?: string) => {
 
   // Revert edited text back to original
   const revertContent = useCallback(async () => {
-    setIsSaving(true);
+    setIsReverting(true);
     try {
       const result = await revertResumeText();
       const textToUse = result.html || result.text;
@@ -146,7 +139,7 @@ export const useResumeEditor = (jobId?: string) => {
       console.error('Revert failed:', err);
       return null;
     } finally {
-      setIsSaving(false);
+      setIsReverting(false);
     }
   }, []);
 
@@ -164,6 +157,7 @@ export const useResumeEditor = (jobId?: string) => {
     chatMessages,
     isChatLoading,
     isSaving,
+    isReverting,
     isDirty,
     lastSavedSkills,
     initContent,

@@ -109,7 +109,7 @@ export function parseResumeStructure(text: string): ParsedResume {
     const line = rawLine.replace(/\[cite:\s*\d+\]/g, '').trim();
     if (!line) continue;
 
-    const isSectionHeader = /^(PROFESSIONAL SUMMARY|SUMMARY|WORK EXPERIENCES|WORK EXPERIENCE|EXPERIENCE|SKILLS|TECHNICAL SKILLS|EDUCATIONS|EDUCATION|PROJECTS|CERTIFICATIONS)$/i.test(line)
+    const isSectionHeader = /^(PROFESSIONAL SUMMARY|CAREER SUMMARY|SUMMARY|CAREER OBJECTIVE|OBJECTIVE|WORK EXPERIENCES|WORK EXPERIENCE|EXPERIENCE|SKILLS|TECHNICAL SKILLS|EDUCATIONS|EDUCATION|PROJECTS|CERTIFICATIONS)$/i.test(line)
       || (line.length < 40 && line === line.toUpperCase() && !line.includes('|') && !line.includes('@') && !line.includes('+') && line.length > 3);
 
     if (isSectionHeader) {
@@ -225,8 +225,10 @@ export function parseResumeStructure(text: string): ParsedResume {
     }
   }
 
-  if (currentJob) result.workExperience.push(currentJob);
-  if (currentEdu) result.education.push(currentEdu);
+  // Fallback: If no standard sections were parsed, populate summary or custom section with full text lines
+  if (!result.summary && result.workExperience.length === 0 && result.education.length === 0 && result.customSections.length === 0 && lines.length > idx) {
+    result.summary = lines.slice(idx).join('\n');
+  }
 
   // Filter out dangling empty skill categories
   result.skills = result.skills.filter(s => s.items && s.items.trim());

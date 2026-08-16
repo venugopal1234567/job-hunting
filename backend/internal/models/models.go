@@ -43,6 +43,7 @@ type Resume struct {
 	UploadedAt      time.Time `json:"uploaded_at"`
 	IsActive        bool      `json:"is_active"`
 	HasPDF          bool      `json:"has_pdf"`
+	PDFBytes        []byte    `json:"-"`
 }
 
 // GapQuestion represents an interview preparation question for a missing skill
