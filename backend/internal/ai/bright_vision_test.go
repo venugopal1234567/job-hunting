@@ -405,3 +405,108 @@ func TestRecruiterValidationMock(t *testing.T) {
 		t.Errorf("Expected 0 hallucinations/omissions/dummy_data, got %v / %v / %v", audit.Hallucinations, audit.Omissions, audit.DummyData)
 	}
 }
+
+func TestChatWithResumeHTMLInput(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]interface{}{
+			"choices": []map[string]interface{}{
+				{
+					"message": map[string]string{
+						"content": `{
+							"message": "I have updated your resume with your experience in Kubernetes Controllers, Go Concurrency, NATS, and Observability.",
+							"proposed_edits": [],
+							"gap_prompts": [],
+							"full_resume_replacement": "",
+							"structured_resume": {
+								"name": "Venugopal Hegde",
+								"title": "Senior Software Development Engineer",
+								"contact_items": ["+919632968298", "venuhegde6@gmail.com", "Hosagadde, Sirsi, Karnataka 581318"],
+								"summary": "Senior Software Development Engineer with 7+ years of experience designing and building high-performance backend services and cloud-native applications in Go.",
+								"skills": [
+									{"category": "Programming Languages", "items": "Go (Golang), Python, Rust, TypeScript, SQL, Shell Scripting"},
+									{"category": "Tools & Platforms", "items": "AWS, GCP, Azure, Kubernetes (GKE), Docker, Helm, CI/CD Pipelines, Local LLMs (Ollama, LM Studio), Mocha"},
+									{"category": "Databases", "items": "MongoDB, PostgreSQL, DynamoDB, Redis"},
+									{"category": "Frameworks & Libraries", "items": "Apache Flink & Kafka/Kinesis, Google Pub/Sub, NATS, gRPC, WebSockets, REST APIs"}
+								],
+								"work_experience": [
+									{
+										"title": "Backend Developer (FDPlan - Schlumberger)",
+										"date": "Jun 2023 - Present",
+										"company": "EPAM Systems",
+										"location": "Bangalore, India (Remote)",
+										"bullets": [
+											"Drive independent backend engineering and platform automation for distributed environments, ensuring high availability.",
+											"Architected the decoupling of backend systems into specialized microservices using REST APIs and WebSocket/Pub/Sub handlers.",
+											"Manage real-time data processing pipelines and Kubernetes Controllers/Operators within the Bumblebee ecosystem for SLB."
+										],
+										"tech_stack": "REST APIs, WebSockets, Pub/Sub, Redis, AI/ML Frameworks, Ollama, SLB OSDU Data Platform, CI/CD"
+									},
+									{
+										"title": "Portability Engineer (Client: Schlumberger)",
+										"date": "Jun 2021 - May 2023",
+										"company": "EPAM Systems",
+										"location": "Bangalore, India (Remote)",
+										"bullets": [
+											"Spearheaded multi-cloud portability initiatives using NATS messaging and storage libraries across AWS, Azure, and GCP.",
+											"Led the seamless migration from legacy datastores to MongoDB for highly scalable NoSQL architectures."
+										],
+										"tech_stack": "AWS, Azure, GCP, MongoDB, Go, Docker, Kubernetes, NATS, TDD"
+									},
+									{
+										"title": "GoLang Developer (Client: KOUNT)",
+										"date": "Jun 2019 - May 2021",
+										"company": "InTimeTec",
+										"location": "Bangalore, India",
+										"bullets": [
+											"Built robust microservices in Go utilizing advanced Go Concurrency Patterns for fraud protection systems."
+										],
+										"tech_stack": "Go, gRPC, Kubernetes, CI/CD, Mocha"
+									}
+								],
+								"education": [
+									{
+										"institution": "Impact College of Engineering & Applied Sciences | Bangalore, India",
+										"date": "2015 - 2019",
+										"degree": "Bachelor of Engineering in Electronics & Communications"
+									}
+								]
+							}
+						}`,
+					},
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := NewClient("mock-key", server.URL, "z-ai/glm-5.2")
+
+	htmlText := `<!DOCTYPE html><html><body><header><h1>Venugopal Hegde</h1></header><section><h2>WORK EXPERIENCES</h2></section></body></html>`
+	userMsg := `Here are my details for the missing skills:\n- **Kubernetes Controllers/Operators**: Yes. Details: Yes I have it and worked in FD plan\n- **Go Concurrency Patterns**: Yes. Details: Yes I worded in all projects\n- **NATS / Kafka Messaging**: Yes. Details: Yes I have done it Portability to use NTAS instead of pub sub\n- **Observability & Tracing**: Yes. Details: yes do it everyday , Currenly implimented with google logs\n\nPlease refine my resume and generate the improved section suggestions based on these inputs.`
+
+	req := &models.ChatRequest{
+		Message:    userMsg,
+		ResumeText: htmlText,
+		JobID:      "44ebcb97-8525-446e-940d-16becf656b62",
+		Model:      "",
+	}
+
+	resp, err := client.ChatWithResume(req, brightVisionJobDescription, "")
+	if err != nil {
+		t.Fatalf("ChatWithResume with HTML input failed: %v", err)
+	}
+
+	if resp.StructuredResume == nil {
+		t.Fatalf("Expected StructuredResume in response, got nil")
+	}
+
+	if len(resp.StructuredResume.WorkExperience) != 3 {
+		t.Errorf("Expected 3 work experiences, got %d", len(resp.StructuredResume.WorkExperience))
+	}
+
+	if !strings.Contains(resp.Message, "Kubernetes") {
+		t.Errorf("Expected response message to acknowledge Kubernetes experience, got %s", resp.Message)
+	}
+}

@@ -217,37 +217,28 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
           </div>
         )}
 
-        {/* Full Resume Replacement Card */}
+        {/* Tailored Result Action Card */}
         {latestMessage?.fullResumeReplacement && !loading && (
-          <div className="rounded-xl border border-brand-500/30 bg-brand-500/5 p-4 text-xs space-y-3">
+          <div className="rounded-xl border border-brand-500/30 bg-brand-500/5 p-3.5 text-xs space-y-3">
             <div className="flex items-start gap-2">
               <Sparkles className="w-4 h-4 text-brand-400 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="font-semibold text-white">Full Resume Redesign Available</p>
+                <p className="font-semibold text-white">Resume Auto-Updated & Tailored</p>
                 <p className="text-gray-400 text-[11px] mt-0.5 leading-relaxed">
-                  The AI has generated a complete, clean, and fully tailored resume that addresses all skill gaps and resolves any layout corruption.
+                  Your resume has been updated on the editor canvas with optimal ATS formatting.
                 </p>
               </div>
             </div>
 
-            <div className="flex gap-2">
-              <button
-                onClick={() => onApplyFullResume && onApplyFullResume(latestMessage.fullResumeReplacement || '')}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-brand-600 hover:bg-brand-500 text-white font-semibold shadow-lg hover:shadow-brand-500/20 transition-all"
-              >
-                <Check className="w-3.5 h-3.5" /> Apply Complete Resume
-              </button>
-            </div>
-            
-            {/* Simple Collapsible Preview */}
-            <details className="text-[11px] text-gray-500 bg-white/5 rounded-lg border border-white/5">
-              <summary className="cursor-pointer p-2 hover:text-white select-none font-medium">
-                Preview New Resume
-              </summary>
-              <pre className="p-3 overflow-y-auto font-mono whitespace-pre-wrap max-h-48 text-[9px] border-t border-white/5 bg-black/20 text-gray-400 leading-normal">
-                {latestMessage.fullResumeReplacement}
-              </pre>
-            </details>
+            <button
+              onClick={() => {
+                handleRestart();
+                onSend("Improve ATS score");
+              }}
+              className="w-full py-2 px-3 rounded-lg bg-surface-300 hover:bg-surface-400 text-gray-200 hover:text-white border border-white/10 font-semibold transition-all flex items-center justify-center gap-2"
+            >
+              <RefreshCw className="w-3.5 h-3.5 text-brand-400" /> Re-Check / Re-Tailor Again
+            </button>
           </div>
         )}
 

@@ -80,7 +80,7 @@ export const chatWithResume = async (
   resumeText: string,
   jobId?: string,
   model?: string
-): Promise<{ message: string; proposed_edits?: any[]; gap_prompts?: any[]; full_resume_replacement?: string; structured_resume?: StructuredResume }> => {
+): Promise<{ message: string; proposed_edits?: any[]; gap_prompts?: any[]; full_resume_replacement?: string; structured_resume?: StructuredResume; html?: string }> => {
   const { data } = await api.post('/resume/chat', {
     message,
     resume_text: resumeText,

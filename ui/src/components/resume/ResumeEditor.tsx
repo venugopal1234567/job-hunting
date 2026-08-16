@@ -34,26 +34,10 @@ function formatBulletActionVerb(str: string): string {
   let s = str.replace(/^[•\-*▪◦\s]+/, '').trim();
   s = escapeHTML(s);
 
-  if (/^\*\*(.*?)\*\*/.test(s)) {
-    return s.replace(/^\*\*(.*?)\*\*/, '<strong>$1</strong>')
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-  }
-  if (/^&lt;strong&gt;(.*?)&lt;\/strong&gt;/i.test(s)) {
-    return s.replace(/^&lt;strong&gt;(.*?)&lt;\/strong&gt;/gi, '<strong>$1</strong>')
-            .replace(/&lt;b&gt;(.*?)&lt;\/b&gt;/gi, '<strong>$1</strong>');
-  }
-
+  // Convert markdown **word** or <strong>word</strong> coming from AI into bold HTML tags
   s = s.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
   s = s.replace(/&lt;strong&gt;(.*?)&lt;\/strong&gt;/gi, '<strong>$1</strong>');
-
-  const match = s.match(/^([A-Za-z0-9\-\/]+)(\s+[\s\S]*)?$/);
-  if (match) {
-    const firstWord = match[1];
-    const rest = match[2] || '';
-    if (/^[A-Za-z]/.test(firstWord) && !firstWord.startsWith('<strong>')) {
-      return `<strong>${firstWord}</strong>${rest}`;
-    }
-  }
+  s = s.replace(/&lt;b&gt;(.*?)&lt;\/b&gt;/gi, '<strong>$1</strong>');
 
   return s;
 }

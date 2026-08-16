@@ -43,22 +43,14 @@ export const useResumeEditor = (jobId?: string) => {
     try {
       const response = await chatWithResume(userText, editorContent, jobId, model);
 
-      // Automatically apply any full replacements or proposed edits to editorContent directly
-      if (response.full_resume_replacement) {
+      // Automatically apply generated HTML or full replacements to editorContent directly
+      if (response.html) {
+        setEditorContent(response.html);
+        setIsDirty(true);
+      } else if (response.full_resume_replacement) {
         const cleanText = response.full_resume_replacement.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
         setEditorContent(cleanText);
         setIsDirty(true);
-      } else if (response.proposed_edits && response.proposed_edits.length > 0) {
-        let updatedText = editorContent;
-        response.proposed_edits.forEach((edit: ProposedEdit) => {
-          if (edit.original && edit.replacement && updatedText.includes(edit.original)) {
-            updatedText = updatedText.replace(edit.original, edit.replacement);
-          }
-        });
-        if (updatedText !== editorContent) {
-          setEditorContent(updatedText);
-          setIsDirty(true);
-        }
       }
 
       const aiMsg: ChatMessage = {
@@ -67,8 +59,9 @@ export const useResumeEditor = (jobId?: string) => {
         content: response.message,
         proposedEdits: response.proposed_edits?.map((e: ProposedEdit) => ({ ...e })),
         gapPrompts: response.gap_prompts?.map((g: GapQuestionPrompt) => ({ ...g })),
-        fullResumeReplacement: response.full_resume_replacement,
+        fullResumeReplacement: response.html || response.full_resume_replacement,
         structuredResume: response.structured_resume,
+        html: response.html,
         timestamp: Date.now(),
       };
       setChatMessages(prev => [...prev, aiMsg]);

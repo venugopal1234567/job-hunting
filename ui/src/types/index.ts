@@ -134,6 +134,7 @@ export interface ChatMessage {
   gapPrompts?: GapQuestionPrompt[];
   fullResumeReplacement?: string;
   structuredResume?: StructuredResume;
+  html?: string;
   timestamp: number;
 }
 

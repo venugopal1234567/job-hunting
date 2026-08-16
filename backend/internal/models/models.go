@@ -156,6 +156,7 @@ type ChatResponse struct {
 	GapPrompts            []GapQuestionPrompt `json:"gap_prompts,omitempty"`
 	FullResumeReplacement string              `json:"full_resume_replacement,omitempty"`
 	StructuredResume      *StructuredResume   `json:"structured_resume,omitempty"`
+	HTML                  string              `json:"html,omitempty"`
 }
 
 // ResumeVersion is a snapshot of a resume at the time of applying

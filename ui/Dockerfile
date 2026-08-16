@@ -24,6 +24,9 @@ RUN printf 'server {\n\
         proxy_pass http://backend:8080;\n\
         proxy_set_header Host $host;\n\
         proxy_set_header X-Real-IP $remote_addr;\n\
+        proxy_read_timeout 300s;\n\
+        proxy_connect_timeout 300s;\n\
+        proxy_send_timeout 300s;\n\
     }\n\
 }\n' > /etc/nginx/conf.d/default.conf
 

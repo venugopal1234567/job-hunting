@@ -53,7 +53,17 @@ func (c *Client) ListModels() ([]models.NvidiaModel, error) {
 	defaultM := c.DefaultModel()
 	return []models.NvidiaModel{
 		{
-			Name:   "nvidia/nemotron-3.5-lightning-30b-a3b",
+			Name:   "deepseek-ai/deepseek-r1",
+			Size:   0,
+			Family: "nvidia",
+		},
+		{
+			Name:   "meta/llama-3.3-70b-instruct",
+			Size:   0,
+			Family: "nvidia",
+		},
+		{
+			Name:   "qwen/qwen2.5-72b-instruct",
 			Size:   0,
 			Family: "nvidia",
 		},
@@ -63,12 +73,7 @@ func (c *Client) ListModels() ([]models.NvidiaModel, error) {
 			Family: "nvidia",
 		},
 		{
-			Name:   "openai/gpt-oss-120b",
-			Size:   0,
-			Family: "nvidia",
-		},
-		{
-			Name:   "meta/llama-3.1-70b-instruct",
+			Name:   "nvidia/nemotron-3.5-lightning-30b-a3b",
 			Size:   0,
 			Family: "nvidia",
 		},
@@ -88,8 +93,8 @@ func (c *Client) generateCompletion(prompt string, modelOverride string, jsonFor
 	primaryModel := c.resolveModel(modelOverride)
 	modelsToTry := []string{primaryModel}
 
-	// Fallback models if primary model hits rate limits
-	for _, m := range []string{"meta/llama-3.1-70b-instruct", "nvidia/nemotron-3.5-lightning-30b-a3b", "openai/gpt-oss-120b"} {
+	// Fallback models if primary model hits rate limits or timeouts
+	for _, m := range []string{"meta/llama-3.3-70b-instruct", "deepseek-ai/deepseek-r1", "qwen/qwen2.5-72b-instruct", "nvidia/nemotron-3.5-lightning-30b-a3b"} {
 		if m != primaryModel {
 			modelsToTry = append(modelsToTry, m)
 		}
@@ -165,7 +170,7 @@ func (c *Client) generateCompletion(prompt string, modelOverride string, jsonFor
 				resp.Body.Close()
 				log.Printf("[AI Client] NVIDIA API Error Status %d (endpoint %s, model %s): %s", resp.StatusCode, endpoint, model, string(bodyBytes))
 				lastErr = fmt.Errorf("nvidia api returned status %d for model '%s' at endpoint '%s': %s", resp.StatusCode, model, endpoint, string(bodyBytes))
-				break // Non-429 error, try next fallback model
+				break // try next fallback model
 			}
 
 			var openAIResp struct {
@@ -313,7 +318,53 @@ func (c *Client) ChatWithResume(req *models.ChatRequest, jobContext string, mode
 	}
 
 	log.Printf("[AI] Raw chat response:\n%s", rawResponse)
-	return parseChatResponse(rawResponse), nil
+	resp := parseChatResponse(rawResponse)
+	if resp != nil {
+		resp.ProposedEdits = []models.ProposedEdit{}
+		if resp.StructuredResume != nil {
+			resp.HTML = BuildATSTemplateHTML(resp.StructuredResume, false)
+		}
+	}
+	return resp, nil
+}
+
+// stripHTMLForPrompt removes HTML tags, CSS styles, and SVG markup to optimize prompt token size
+func stripHTMLForPrompt(htmlStr string) string {
+	if !strings.Contains(htmlStr, "<") {
+		return htmlStr
+	}
+	// Remove <style>...</style> content completely
+	reStyle := regexp.MustCompile(`(?is)<style.*?>.*?</style>`)
+	s := reStyle.ReplaceAllString(htmlStr, "")
+
+	// Remove <script>...</script> content completely
+	reScript := regexp.MustCompile(`(?is)<script.*?>.*?</script>`)
+	s = reScript.ReplaceAllString(s, "")
+
+	// Remove <head>...</head> content completely
+	reHead := regexp.MustCompile(`(?is)<head.*?>.*?</head>`)
+	s = reHead.ReplaceAllString(s, "")
+
+	// Remove <svg>...</svg> content completely
+	reSvg := regexp.MustCompile(`(?is)<svg.*?>.*?</svg>`)
+	s = reSvg.ReplaceAllString(s, "")
+
+	// Replace block elements with newlines
+	reBlock := regexp.MustCompile(`(?i)</?(?:p|div|li|tr|h[1-6]|header|section|br)\b[^>]*>`)
+	s = reBlock.ReplaceAllString(s, "\n")
+
+	// Strip remaining HTML tags
+	reTag := regexp.MustCompile(`<[^>]*>`)
+	s = reTag.ReplaceAllString(s, "")
+
+	// Unescape HTML entities
+	s = html.UnescapeString(s)
+
+	// Clean up multiple newlines
+	reLines := regexp.MustCompile(`\n{3,}`)
+	s = reLines.ReplaceAllString(s, "\n\n")
+
+	return strings.TrimSpace(s)
 }
 
 // buildChatPrompt constructs the resume chat prompt
@@ -322,6 +373,8 @@ func buildChatPrompt(req *models.ChatRequest, jobContext string) string {
 	if jobContext != "" {
 		jobSection = fmt.Sprintf("\n\nTARGET JOB DESCRIPTION:\n%s", truncate(jobContext, 500000))
 	}
+
+	cleanResumeText := stripHTMLForPrompt(req.ResumeText)
 
 	return fmt.Sprintf(`You are a Senior Technical Recruiter and ATS Resume Analyst. 
 Your goal is to help the candidate perfectly tailor their resume for the target Job Description into an elegant, high-converting HTML/ATS resume format.
@@ -408,7 +461,7 @@ CRITICAL RULES & CONSTRAINTS:
 - PRESERVE OFFICIAL JOB TITLES & NO HALLUCINATIONS: Keep the exact official job titles from the candidate's original resume (e.g. "Senior Software Development Engineer"). Do NOT change official job titles to match the target job title (e.g., do NOT change "Senior Software Development Engineer" to "Senior Golang Developer"). Do NOT invent fake technical details or assign tools to specific roles where they were not listed in the original source text.
 - SECTION ORDERING IS MANDATORY: 1. Professional Summary, 2. Work Experiences, 3. Educations, 4. Skills.
 - The "highlight_keywords" array MUST contain all high-value keywords, technologies, skills, and metrics that should be highlighted on the resume for maximum ATS/recruiter impact.
-- All bullet points in work_experience MUST be strong, concise, and impact-oriented sentences tailored to the target job description.
+- All bullet points in work_experience MUST be strong, concise, and impact-oriented sentences tailored to the target job description. Wrap key action verbs or critical achievement terms in markdown bold syntax like **Architected**, **Spearheaded**, **Built**, or **Optimized** so they render with proper bolding.
 - Ensure proper spacing after punctuation.
 - Return [] for "gap_prompts" and null for "structured_resume" if not generating a resume edit.
 
@@ -419,7 +472,7 @@ CURRENT RESUME:
 USER MESSAGE: %s
 
 OUTPUT STRICTLY JSON:`,
-		truncate(req.ResumeText, 500000),
+		truncate(cleanResumeText, 500000),
 		jobSection,
 		req.Message,
 	)
@@ -551,31 +604,9 @@ func formatBulletActionVerbGo(str string) string {
 	s := regexp.MustCompile(`^[•\-*▪◦\s]+`).ReplaceAllString(str, "")
 	s = html.EscapeString(strings.TrimSpace(s))
 
-	if regexp.MustCompile(`^\*\*(.*?)\*\*`).MatchString(s) {
-		s = regexp.MustCompile(`^\*\*(.*?)\*\*`).ReplaceAllString(s, "<strong>$1</strong>")
-		s = regexp.MustCompile(`\*\*(.*?)\*\*`).ReplaceAllString(s, "<strong>$1</strong>")
-		return s
-	}
-	if regexp.MustCompile(`(?i)^&lt;strong&gt;(.*?)&lt;/strong&gt;`).MatchString(s) {
-		s = regexp.MustCompile(`(?i)&lt;strong&gt;(.*?)&lt;/strong&gt;`).ReplaceAllString(s, "<strong>$1</strong>")
-		s = regexp.MustCompile(`(?i)&lt;b&gt;(.*?)&lt;/b&gt;`).ReplaceAllString(s, "<strong>$1</strong>")
-		return s
-	}
-
 	s = regexp.MustCompile(`\*\*(.*?)\*\*`).ReplaceAllString(s, "<strong>$1</strong>")
 	s = regexp.MustCompile(`(?i)&lt;strong&gt;(.*?)&lt;/strong&gt;`).ReplaceAllString(s, "<strong>$1</strong>")
-
-	parts := strings.SplitN(s, " ", 2)
-	if len(parts) > 0 && regexp.MustCompile(`^[A-Za-z0-9\-\/]+$`).MatchString(parts[0]) && !strings.HasPrefix(parts[0], "<strong>") {
-		firstWord := parts[0]
-		rest := ""
-		if len(parts) > 1 {
-			rest = " " + parts[1]
-		}
-		if regexp.MustCompile(`^[A-Za-z]`).MatchString(firstWord) {
-			return "<strong>" + firstWord + "</strong>" + rest
-		}
-	}
+	s = regexp.MustCompile(`(?i)&lt;b&gt;(.*?)&lt;/b&gt;`).ReplaceAllString(s, "<strong>$1</strong>")
 
 	return s
 }
