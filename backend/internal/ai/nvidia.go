@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"regexp"
 	"remotehunter/internal/models"
 	"strings"
 	"time"
@@ -82,9 +83,18 @@ func (c *Client) resolveModel(override string) string {
 	return c.DefaultModel()
 }
 
-// generateCompletion routes requests to OpenAI/NVIDIA API endpoint
+// generateCompletion routes requests to OpenAI/NVIDIA API endpoint with 429 retry backoff & fallback models
 func (c *Client) generateCompletion(prompt string, modelOverride string, jsonFormat bool) (string, error) {
-	model := c.resolveModel(modelOverride)
+	primaryModel := c.resolveModel(modelOverride)
+	modelsToTry := []string{primaryModel}
+
+	// Fallback models if primary model hits rate limits
+	for _, m := range []string{"meta/llama-3.1-70b-instruct", "nvidia/nemotron-3.5-lightning-30b-a3b", "openai/gpt-oss-120b"} {
+		if m != primaryModel {
+			modelsToTry = append(modelsToTry, m)
+		}
+	}
+
 	baseURL := c.nvidiaBaseURL
 	if baseURL == "" {
 		baseURL = "https://integrate.api.nvidia.com/v1"
@@ -103,60 +113,88 @@ func (c *Client) generateCompletion(prompt string, modelOverride string, jsonFor
 		ResponseFormat interface{}     `json:"response_format,omitempty"`
 	}
 
-	maxTokens := 131072
+	var lastErr error
 
-	reqObj := openAIReq{
-		Model: model,
-		Messages: []openAIMessage{
-			{Role: "user", Content: prompt},
-		},
-		Temperature: 0.2,
-		MaxTokens:   maxTokens,
+	for _, model := range modelsToTry {
+		for attempt := 0; attempt < 3; attempt++ {
+			if attempt > 0 {
+				sleepSec := time.Duration(attempt*2) * time.Second
+				log.Printf("[AI Client] Rate limited (429). Retrying attempt %d in %v for model %s...", attempt, sleepSec, model)
+				time.Sleep(sleepSec)
+			}
+
+			reqObj := openAIReq{
+				Model: model,
+				Messages: []openAIMessage{
+					{Role: "user", Content: prompt},
+				},
+				Temperature: 0.2,
+				MaxTokens:   8192,
+			}
+
+			reqBody, err := json.Marshal(reqObj)
+			if err != nil {
+				return "", fmt.Errorf("marshal openai request: %w", err)
+			}
+
+			log.Printf("[AI Client] Calling NVIDIA API: %s with model: %s", endpoint, model)
+
+			httpReq, err := http.NewRequest("POST", endpoint, bytes.NewReader(reqBody))
+			if err != nil {
+				return "", fmt.Errorf("create openai http request: %w", err)
+			}
+			httpReq.Header.Set("Content-Type", "application/json")
+			if c.nvidiaAPIKey != "" {
+				httpReq.Header.Set("Authorization", "Bearer "+c.nvidiaAPIKey)
+			}
+
+			resp, err := c.httpClient.Do(httpReq)
+			if err != nil {
+				lastErr = fmt.Errorf("nvidia api request failed: %w", err)
+				continue
+			}
+
+			if resp.StatusCode == 429 {
+				resp.Body.Close()
+				lastErr = fmt.Errorf("nvidia api returned status 429 for model '%s'", model)
+				continue
+			}
+
+			if resp.StatusCode != http.StatusOK {
+				bodyBytes, _ := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				log.Printf("[AI Client] NVIDIA API Error Status %d (endpoint %s, model %s): %s", resp.StatusCode, endpoint, model, string(bodyBytes))
+				lastErr = fmt.Errorf("nvidia api returned status %d for model '%s' at endpoint '%s': %s", resp.StatusCode, model, endpoint, string(bodyBytes))
+				break // Non-429 error, try next fallback model
+			}
+
+			var openAIResp struct {
+				Choices []struct {
+					Message struct {
+						Content string `json:"content"`
+					} `json:"message"`
+				} `json:"choices"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&openAIResp); err != nil {
+				resp.Body.Close()
+				lastErr = fmt.Errorf("decode nvidia response: %w", err)
+				break
+			}
+			resp.Body.Close()
+
+			if len(openAIResp.Choices) == 0 {
+				lastErr = fmt.Errorf("empty response choices from nvidia api")
+				break
+			}
+
+			return openAIResp.Choices[0].Message.Content, nil
+		}
 	}
 
-	reqBody, err := json.Marshal(reqObj)
-	if err != nil {
-		return "", fmt.Errorf("marshal openai request: %w", err)
+	if lastErr != nil {
+		return "", lastErr
 	}
-
-	log.Printf("[AI Client] Calling NVIDIA API: %s with model: %s", endpoint, model)
-
-	httpReq, err := http.NewRequest("POST", endpoint, bytes.NewReader(reqBody))
-	if err != nil {
-		return "", fmt.Errorf("create openai http request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	if c.nvidiaAPIKey != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+c.nvidiaAPIKey)
-	}
-
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return "", fmt.Errorf("nvidia api request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		log.Printf("[AI Client] NVIDIA API Error Status %d (endpoint %s, model %s): %s", resp.StatusCode, endpoint, model, string(bodyBytes))
-		return "", fmt.Errorf("nvidia api returned status %d for model '%s' at endpoint '%s': %s", resp.StatusCode, model, endpoint, string(bodyBytes))
-	}
-
-	var openAIResp struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&openAIResp); err != nil {
-		return "", fmt.Errorf("decode nvidia response: %w", err)
-	}
-
-	if len(openAIResp.Choices) == 0 {
-		return "", fmt.Errorf("empty response choices from nvidia api")
-	}
-	return openAIResp.Choices[0].Message.Content, nil
+	return "", fmt.Errorf("all ai model attempts failed")
 }
 
 // AnalyzeATSMatch sends a structured prompt to the AI provider
@@ -329,6 +367,14 @@ Respond ONLY with a valid JSON object matching exactly this schema:
       {
         "category": "Programming Languages",
         "items": "Go, Python, TypeScript, SQL, Shell Scripting"
+      },
+      {
+        "category": "Soft Skills",
+        "items": "Platform Engineering, Test-Driven Development (TDD), System Design, Agile/Scrum, Remote Collaboration"
+      },
+      {
+        "category": "Tools & Platforms",
+        "items": "AWS, Azure, GCP, CI/CD Automation"
       }
     ],
     "work_experience": [
@@ -357,10 +403,12 @@ Respond ONLY with a valid JSON object matching exactly this schema:
   }
 }
 
-CRITICAL RULES:
-- SECTION ORDERING IS MANDATORY: 1. Professional Summary, 2. Skills (placed directly below summary!), 3. Work Experiences, 4. Educations.
+CRITICAL RULES & CONSTRAINTS:
+- MANDATORY ZERO WORK EXPERIENCE LOSS: You MUST preserve EVERY SINGLE work experience entry and company from the candidate's original resume. NEVER delete, omit, or strip off any company or job role (e.g., EPAM Systems Backend Developer, EPAM Systems Portability Engineer, and InTimeTec GoLang Developer MUST ALL BE INCLUDED).
+- PRESERVE OFFICIAL JOB TITLES & NO HALLUCINATIONS: Keep the exact official job titles from the candidate's original resume (e.g. "Senior Software Development Engineer"). Do NOT change official job titles to match the target job title (e.g., do NOT change "Senior Software Development Engineer" to "Senior Golang Developer"). Do NOT invent fake technical details or assign tools to specific roles where they were not listed in the original source text.
+- SECTION ORDERING IS MANDATORY: 1. Professional Summary, 2. Work Experiences, 3. Educations, 4. Skills.
 - The "highlight_keywords" array MUST contain all high-value keywords, technologies, skills, and metrics that should be highlighted on the resume for maximum ATS/recruiter impact.
-- All bullet points in work_experience MUST be strong, concise, and impact-oriented sentences.
+- All bullet points in work_experience MUST be strong, concise, and impact-oriented sentences tailored to the target job description.
 - Ensure proper spacing after punctuation.
 - Return [] for "gap_prompts" and null for "structured_resume" if not generating a resume edit.
 
@@ -404,12 +452,17 @@ func (c *Client) ConvertResumeToTemplate(rawText string, modelOverride string, f
 	}
 
 	if modelOverride == "" {
-		modelOverride = "nvidia/nemotron-3.5-lightning-30b-a3b"
+		modelOverride = c.DefaultModel()
 	}
 
 	fitInstruction := ""
 	if fitSinglePage {
-		fitInstruction = "\nCRITICAL SINGLE PAGE FIT INSTRUCTION: Condense all bullet points into punchy, high-impact single-line achievements. Eliminate filler words and redundant phrases so the entire resume easily fits strictly on 1 single letter page."
+		fitInstruction = `
+CRITICAL SINGLE PAGE FIT & ZERO LOSS CONSTRAINTS:
+1. YOU MUST PRESERVE EVERY SINGLE WORK EXPERIENCE ENTRY AND COMPANY FROM THE ORIGINAL RESUME. NEVER STRIP OFF, DELETE, OR OMIT ANY COMPANY OR JOB EXPERIENCE (e.g. EPAM Systems Backend Developer, EPAM Systems Portability Engineer, and InTimeTec GoLang Developer MUST ALL BE PRESERVED).
+2. To fit strictly on 1 single letter page, condense each bullet point into punchy, high-impact single-line achievements. Eliminate filler words and redundant fluff, but DO NOT drop entire bullet points or whole job experiences.
+3. Categorize skills into clean, standardized categories matching: "Databases", "Frameworks & Libraries", "Programming Languages", "Soft Skills", "Tools & Platforms".
+4. Ensure "tech_stack" is populated for every work experience entry.`
 	}
 
 	prompt := fmt.Sprintf(`You are an expert ATS resume parser and formatter.
@@ -417,14 +470,14 @@ Extract all information from the candidate's resume and return it strictly as a 
 
 {
   "name": "<Candidate Full Name>",
-  "title": "<Candidate Current / Target Job Title>",
-  "contact_items": ["<Phone Number>", "<Email Address>", "<Location (City, Country)>"],
+  "title": "<Candidate Current / Target Job Title, e.g. Senior Software Development Engineer>",
+  "contact_items": ["<Phone Number>", "<Email Address>", "<Location (City, State/Country)>"],
   "summary": "<Professional summary paragraph>",
   "work_experience": [
     {
       "title": "<Job Role / Title>",
       "date": "<Start Date - End Date>",
-      "company": "<Company Name - Employment Type>",
+      "company": "<Company Name>",
       "location": "<Location>",
       "bullets": ["<Bullet point 1>", "<Bullet point 2>"],
       "tech_stack": "<Comma-separated technologies/skills used>"
@@ -444,6 +497,14 @@ Extract all information from the candidate's resume and return it strictly as a 
     }
   ]
 }
+
+CRITICAL FORMATTING CONSTRAINTS:
+1. Contact items must be clean strings without pipe ('|') separators.
+2. YOU MUST EXTRACT ALL WORK EXPERIENCES AND COMPANIES FROM THE RESUME. DO NOT OMIT OR STRIP ANY JOB ROLE.
+3. Job Title must be present for every entry.
+4. Company Name must be present for every entry.
+5. Technologies / Skills Used must be populated on tech_stack for each job.
+6. Skill categories must be organized cleanly (Databases, Frameworks & Libraries, Programming Languages, Soft Skills, Tools & Platforms).
 
 Remove all citation markers like [cite: 1].%s
 CANDIDATE RESUME TEXT:
@@ -474,7 +535,65 @@ OUTPUT STRICTLY VALID JSON:`, fitInstruction, truncate(rawText, 500000))
 	return &structRes, htmlContent, nil
 }
 
-// BuildATSTemplateHTML generates high-fidelity HTML matching the requested template format and styling
+func renderFormattedTextGo(str string) string {
+	s := regexp.MustCompile(`^[•\-*▪◦\s]+`).ReplaceAllString(str, "")
+	s = html.EscapeString(strings.TrimSpace(s))
+	s = regexp.MustCompile(`\*\*(.*?)\*\*`).ReplaceAllString(s, "<strong>$1</strong>")
+	s = regexp.MustCompile(`(?i)&lt;strong&gt;(.*?)&lt;/strong&gt;`).ReplaceAllString(s, "<strong>$1</strong>")
+	s = regexp.MustCompile(`(?i)&lt;b&gt;(.*?)&lt;/b&gt;`).ReplaceAllString(s, "<strong>$1</strong>")
+	return s
+}
+
+func formatBulletActionVerbGo(str string) string {
+	if str == "" {
+		return ""
+	}
+	s := regexp.MustCompile(`^[•\-*▪◦\s]+`).ReplaceAllString(str, "")
+	s = html.EscapeString(strings.TrimSpace(s))
+
+	if regexp.MustCompile(`^\*\*(.*?)\*\*`).MatchString(s) {
+		s = regexp.MustCompile(`^\*\*(.*?)\*\*`).ReplaceAllString(s, "<strong>$1</strong>")
+		s = regexp.MustCompile(`\*\*(.*?)\*\*`).ReplaceAllString(s, "<strong>$1</strong>")
+		return s
+	}
+	if regexp.MustCompile(`(?i)^&lt;strong&gt;(.*?)&lt;/strong&gt;`).MatchString(s) {
+		s = regexp.MustCompile(`(?i)&lt;strong&gt;(.*?)&lt;/strong&gt;`).ReplaceAllString(s, "<strong>$1</strong>")
+		s = regexp.MustCompile(`(?i)&lt;b&gt;(.*?)&lt;/b&gt;`).ReplaceAllString(s, "<strong>$1</strong>")
+		return s
+	}
+
+	s = regexp.MustCompile(`\*\*(.*?)\*\*`).ReplaceAllString(s, "<strong>$1</strong>")
+	s = regexp.MustCompile(`(?i)&lt;strong&gt;(.*?)&lt;/strong&gt;`).ReplaceAllString(s, "<strong>$1</strong>")
+
+	parts := strings.SplitN(s, " ", 2)
+	if len(parts) > 0 && regexp.MustCompile(`^[A-Za-z0-9\-\/]+$`).MatchString(parts[0]) && !strings.HasPrefix(parts[0], "<strong>") {
+		firstWord := parts[0]
+		rest := ""
+		if len(parts) > 1 {
+			rest = " " + parts[1]
+		}
+		if regexp.MustCompile(`^[A-Za-z]`).MatchString(firstWord) {
+			return "<strong>" + firstWord + "</strong>" + rest
+		}
+	}
+
+	return s
+}
+
+func formatJobTitleLineGo(title string) string {
+	if title == "" {
+		return ""
+	}
+	if strings.Contains(title, "|") {
+		parts := strings.Split(title, "|")
+		mainTitle := strings.TrimSpace(parts[0])
+		restType := strings.TrimSpace(strings.Join(parts[1:], " | "))
+		return "<strong>" + html.EscapeString(mainTitle) + "</strong> | " + html.EscapeString(restType)
+	}
+	return "<strong>" + html.EscapeString(title) + "</strong>"
+}
+
+// BuildATSTemplateHTML renders a structured resume into exact Times New Roman HTML/CSS template
 func BuildATSTemplateHTML(sr *models.StructuredResume, fitSinglePage ...bool) string {
 	if sr == nil {
 		return ""
@@ -496,193 +615,269 @@ func BuildATSTemplateHTML(sr *models.StructuredResume, fitSinglePage ...bool) st
             size: letter;
             margin: `)
 	if isSinglePage {
-		sb.WriteString(`0.25in 0.35in;`)
+		sb.WriteString(`12px 18px;`)
 	} else {
-		sb.WriteString(`0.5in 0.5in;`)
+		sb.WriteString(`18px 20px;`)
 	}
 	sb.WriteString(`
         }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: "Times New Roman", Times, serif;
+            color: #000;
             line-height: `)
 	if isSinglePage {
-		sb.WriteString(`1.28; font-size: 8.8pt; padding: 10px 15px;`)
+		sb.WriteString(`1.2; font-size: 13px; padding: 10px 15px;`)
 	} else {
-		sb.WriteString(`1.6; font-size: 10.5pt; padding: 40px 20px;`)
+		sb.WriteString(`1.25; font-size: 13.5px; padding: 18px 20px;`)
 	}
 	sb.WriteString(`
-            color: #333;
             max-width: 850px;
             margin: 0 auto;
-            background: #fff;
+            background-color: #fff;
         }
+        
+        /* Header Styling */
         header {
-            text-align: left;
+            text-align: center;
             margin-bottom: `)
 	if isSinglePage {
-		sb.WriteString(`10px; padding-bottom: 6px;`)
+		sb.WriteString(`8px;`)
 	} else {
-		sb.WriteString(`18px; padding-bottom: 12px;`)
+		sb.WriteString(`12px;`)
 	}
 	sb.WriteString(`
-            border-bottom: 2px solid #2c3e50;
         }
         h1 {
+            font-family: "Times New Roman", Times, serif;
             font-size: `)
 	if isSinglePage {
-		sb.WriteString(`1.8em; margin: 0 0 2px 0;`)
+		sb.WriteString(`24px;`)
 	} else {
-		sb.WriteString(`2.2em; margin: 0 0 4px 0;`)
+		sb.WriteString(`26px;`)
 	}
 	sb.WriteString(`
-            color: #2c3e50;
-            font-weight: 800;
-            letter-spacing: 0.5px;
-            text-align: left;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin: 0 0 3px 0;
+            text-align: center;
+        }
+        .subtitle {
+            font-family: "Times New Roman", Times, serif;
+            font-style: italic;
+            font-size: `)
+	if isSinglePage {
+		sb.WriteString(`14px; margin: 0 0 4px 0;`)
+	} else {
+		sb.WriteString(`15px; margin: 0 0 6px 0;`)
+	}
+	sb.WriteString(`
+            text-align: center;
         }
         .contact-info {
+            font-family: "Times New Roman", Times, serif;
             font-size: `)
 	if isSinglePage {
-		sb.WriteString(`0.88em;`)
+		sb.WriteString(`12px;`)
 	} else {
-		sb.WriteString(`0.95em;`)
+		sb.WriteString(`13px;`)
 	}
 	sb.WriteString(`
-            color: #555;
-            text-align: left;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            text-align: center;
+            margin-top: 4px;
         }
         .contact-info span {
-            margin: 0 `)
-	if isSinglePage {
-		sb.WriteString(`4px;`)
-	} else {
-		sb.WriteString(`10px;`)
-	}
-	sb.WriteString(`
+            display: inline-flex;
+            align-items: center;
         }
+        .contact-info svg {
+            width: 12px !important;
+            height: 12px !important;
+            min-width: 12px !important;
+            min-height: 12px !important;
+            max-width: 12px !important;
+            max-height: 12px !important;
+            margin-right: 4px;
+            vertical-align: -1px;
+            fill: #000;
+            flex-shrink: 0;
+            display: inline-block;
+        }
+
+        /* Section Headings */
         h2 {
-            color: #2c3e50;
-            border-bottom: 1px solid #ccc;
-            padding-bottom: `)
+            font-family: "Times New Roman", Times, serif;
+            font-size: `)
 	if isSinglePage {
-		sb.WriteString(`2px; margin-top: 8px; margin-bottom: 4px; font-size: 1.05em;`)
+		sb.WriteString(`14.5px; margin-top: 8px; margin-bottom: 5px;`)
 	} else {
-		sb.WriteString(`5px; margin-top: 30px; font-size: 1.25em;`)
+		sb.WriteString(`15.5px; margin-top: 12px; margin-bottom: 6px;`)
 	}
 	sb.WriteString(`
             text-transform: uppercase;
+            border-bottom: 1.5px solid #000;
+            border-top: none;
+            padding-bottom: 2px;
+            font-weight: bold;
         }
-        .job {
-            margin-bottom: `)
-	if isSinglePage {
-		sb.WriteString(`8px;`)
-	} else {
-		sb.WriteString(`25px;`)
-	}
-	sb.WriteString(`
-        }
-        .job-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: `)
-	if isSinglePage {
-		sb.WriteString(`2px;`)
-	} else {
-		sb.WriteString(`5px;`)
-	}
-	sb.WriteString(`
-        }
-        .job-title {
+
+        /* General Content Styling */
+        p {
+            font-family: "Times New Roman", Times, serif;
+            margin: 0 0 8px 0;
             font-size: `)
 	if isSinglePage {
-		sb.WriteString(`1.02em;`)
+		sb.WriteString(`13px;`)
 	} else {
-		sb.WriteString(`1.2em;`)
-	}
-	sb.WriteString(`
-            font-weight: bold;
-            color: #34495e;
-        }
-        .job-date {
-            font-weight: bold;
-            color: #7f8c8d;
-        }
-        .company-info {
-            display: flex;
-            justify-content: space-between;
-            font-style: italic;
-            color: #555;
-            margin-bottom: `)
-	if isSinglePage {
-		sb.WriteString(`4px;`)
-	} else {
-		sb.WriteString(`10px;`)
-	}
-	sb.WriteString(`
-        }
-        ul {
-            margin-top: 0;
-            padding-left: `)
-	if isSinglePage {
-		sb.WriteString(`16px; margin-bottom: 2px;`)
-	} else {
-		sb.WriteString(`20px;`)
-	}
-	sb.WriteString(`
-        }
-        li {
-            margin-bottom: `)
-	if isSinglePage {
-		sb.WriteString(`2px;`)
-	} else {
-		sb.WriteString(`8px;`)
+		sb.WriteString(`13.5px;`)
 	}
 	sb.WriteString(`
             text-align: justify;
         }
-        .tech-stack {
-            font-weight: bold;
+        
+        .flex-between {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+        }
+
+        /* Work Experience Styling */
+        .job-title-container {
+            margin-bottom: 1px;
             font-size: `)
 	if isSinglePage {
-		sb.WriteString(`0.85em; margin-top: 2px;`)
+		sb.WriteString(`13.5px;`)
 	} else {
-		sb.WriteString(`0.9em; margin-top: 10px;`)
+		sb.WriteString(`14.5px;`)
 	}
 	sb.WriteString(`
-            color: #2c3e50;
         }
-        .skills-list {
-            list-style-type: none;
-            padding: 0;
-        }
-        .skills-list li {
-            margin-bottom: `)
+        .job-title {
+            font-family: "Times New Roman", Times, serif;
+            font-size: `)
 	if isSinglePage {
-		sb.WriteString(`3px;`)
+		sb.WriteString(`13.5px;`)
 	} else {
-		sb.WriteString(`10px;`)
+		sb.WriteString(`14.5px;`)
 	}
 	sb.WriteString(`
         }
-        .skill-category {
+        .job-title strong {
             font-weight: bold;
-            color: #2c3e50;
-            width: 220px;
-            display: inline-block;
         }
-        .education-block {
-            margin-bottom: `)
+        .job-date {
+            font-family: "Times New Roman", Times, serif;
+            font-size: `)
 	if isSinglePage {
-		sb.WriteString(`6px;`)
+		sb.WriteString(`13px;`)
 	} else {
-		sb.WriteString(`15px;`)
+		sb.WriteString(`13.5px;`)
 	}
 	sb.WriteString(`
+        }
+        .company-container {
+            font-family: "Times New Roman", Times, serif;
+            font-style: italic;
+            font-size: `)
+	if isSinglePage {
+		sb.WriteString(`13px; margin-bottom: 3px;`)
+	} else {
+		sb.WriteString(`13.5px; margin-bottom: 4px;`)
+	}
+	sb.WriteString(`
+        }
+        .company-name, .job-location {
+            font-style: italic;
+        }
+
+        ul {
+            font-family: "Times New Roman", Times, serif;
+            margin: 0 0 4px 0;
+            padding-left: 20px;
+            font-size: `)
+	if isSinglePage {
+		sb.WriteString(`13px;`)
+	} else {
+		sb.WriteString(`13.5px;`)
+	}
+	sb.WriteString(`
+            text-align: justify;
+            list-style-type: disc !important;
+        }
+        li {
+            font-family: "Times New Roman", Times, serif;
+            margin-bottom: `)
+	if isSinglePage {
+		sb.WriteString(`2px; line-height: 1.2;`)
+	} else {
+		sb.WriteString(`3px; line-height: 1.28;`)
+	}
+	sb.WriteString(`
+            list-style-type: disc !important;
+        }
+        li strong {
+            font-weight: bold;
+        }
+
+        .tech-used {
+            font-family: "Times New Roman", Times, serif;
+            font-style: italic;
+            font-size: `)
+	if isSinglePage {
+		sb.WriteString(`12.5px; margin-top: 3px; margin-bottom: 6px;`)
+	} else {
+		sb.WriteString(`13px; margin-top: 3px; margin-bottom: 10px;`)
+	}
+	sb.WriteString(`
+        }
+        .tech-used em {
+            font-style: italic;
+        }
+
+        /* Education */
+        .edu-details {
+            font-family: "Times New Roman", Times, serif;
+            font-style: italic;
+            font-size: `)
+	if isSinglePage {
+		sb.WriteString(`13px; margin-top: 1px; margin-bottom: 5px;`)
+	} else {
+		sb.WriteString(`13.5px; margin-top: 1px; margin-bottom: 5px;`)
+	}
+	sb.WriteString(`
+        }
+
+        /* Skills Table */
+        .skills-table {
+            font-family: "Times New Roman", Times, serif;
+            width: 100%;
+            font-size: `)
+	if isSinglePage {
+		sb.WriteString(`13px;`)
+	} else {
+		sb.WriteString(`13.5px;`)
+	}
+	sb.WriteString(`
+            border-collapse: collapse;
+            margin-bottom: 6px;
+        }
+        .skills-table td {
+            vertical-align: top;
+            padding: 2.5px 0;
+        }
+        .skills-table td:first-child {
+            font-weight: bold;
+            width: 26%;
+            padding-right: 8px;
         }
         @media print {
             body { padding: 0; margin: 0; max-width: 100%; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            .job, .education-block, section { page-break-inside: avoid; }
+            .job-title-container, .company-container, section { page-break-inside: avoid; }
         }
     </style>
 </head>
@@ -691,21 +886,31 @@ func BuildATSTemplateHTML(sr *models.StructuredResume, fitSinglePage ...bool) st
     <header>
         <h1>`)
 	sb.WriteString(html.EscapeString(sr.Name))
-	sb.WriteString(`</h1>
-        <div class="contact-info">`)
+	sb.WriteString(`</h1>`)
 	if sr.Title != "" {
 		sb.WriteString(`
-            <strong>`)
+        <div class="subtitle"><em>`)
 		sb.WriteString(html.EscapeString(sr.Title))
-		sb.WriteString(`</strong><br>`)
+		sb.WriteString(`</em></div>`)
 	}
-	for i, item := range sr.ContactItems {
-		if i > 0 {
-			sb.WriteString(` | `)
+	sb.WriteString(`
+        <div class="contact-info">`)
+	for _, item := range sr.ContactItems {
+		cleanItem := strings.TrimSpace(strings.ReplaceAll(item, "|", ""))
+		if cleanItem == "" {
+			continue
 		}
 		sb.WriteString(`
             <span>`)
-		sb.WriteString(html.EscapeString(item))
+		svgStyle := `width="12" height="12" style="width:12px!important;height:12px!important;min-width:12px!important;min-height:12px!important;max-width:12px!important;max-height:12px!important;vertical-align:-1px;margin-right:4px;fill:#000;display:inline-block;flex-shrink:0;"`
+		if strings.Contains(cleanItem, "@") {
+			sb.WriteString(fmt.Sprintf(`<svg %s viewBox="0 0 512 512"><path d="M48 64C21.5 64 0 85.5 0 112c0 15.1 7.1 29.3 19.2 38.4L236.8 313.6c11.4 8.5 27 8.5 38.4 0L492.8 150.4c12.1-9.1 19.2-23.3 19.2-38.4c0-26.5-21.5-48-48-48H48zM0 176V384c0 35.3 28.7 64 64 64H448c35.3 0 64-28.7 64-64V176L294.4 339.2c-22.8 17.1-54 17.1-76.8 0L0 176z"/></svg>`, svgStyle))
+		} else if regexp.MustCompile(`[\+\d\(\)\-]{7,}`).MatchString(cleanItem) {
+			sb.WriteString(fmt.Sprintf(`<svg %s viewBox="0 0 512 512"><path d="M164.9 24.6c-7.7-18.6-28-28.5-47.4-23.2l-88 24C12.1 30.2 0 46 0 64C0 311.4 200.6 512 448 512c18 0 33.8-12.1 38.6-29.5l24-88c5.3-19.4-4.6-39.7-23.2-47.4l-96-40c-16.3-6.8-35.2-2.1-46.3 11.6L304.7 368C234.3 334.7 177.3 277.7 144 207.3L193.3 167c13.7-11.2 18.4-30 11.6-46.3l-40-96z"/></svg>`, svgStyle))
+		} else {
+			sb.WriteString(fmt.Sprintf(`<svg %s viewBox="0 0 384 512"><path d="M215.7 499.2C267 435 384 279.4 384 192C384 86 298 0 192 0S0 86 0 192c0 87.4 117 243 168.3 307.2c12.3 15.3 35.1 15.3 47.4 0zM192 128a64 64 0 1 1 0 128 64 64 0 1 1 0-128z"/></svg>`, svgStyle))
+		}
+		sb.WriteString(html.EscapeString(cleanItem))
 		sb.WriteString(`</span>`)
 	}
 	sb.WriteString(`
@@ -718,7 +923,7 @@ func BuildATSTemplateHTML(sr *models.StructuredResume, fitSinglePage ...bool) st
     <section>
         <h2>PROFESSIONAL SUMMARY</h2>
         <p>`)
-		sb.WriteString(html.EscapeString(sr.Summary))
+		sb.WriteString(renderFormattedTextGo(sr.Summary))
 		sb.WriteString(`</p>
     </section>`)
 	}
@@ -730,72 +935,69 @@ func BuildATSTemplateHTML(sr *models.StructuredResume, fitSinglePage ...bool) st
         <h2>WORK EXPERIENCES</h2>`)
 		for _, job := range sr.WorkExperience {
 			sb.WriteString(`
-
-        <div class="job">
-            <div class="job-header">
-                <span class="job-title">`)
-			sb.WriteString(html.EscapeString(job.Title))
-			sb.WriteString(`</span>
-                <span class="job-date">`)
+        <div class="job-title-container flex-between">
+            <div class="job-title">`)
+			sb.WriteString(formatJobTitleLineGo(job.Title))
+			sb.WriteString(`</div>
+            <div class="job-date">`)
 			sb.WriteString(html.EscapeString(job.Date))
-			sb.WriteString(`</span>
-            </div>`)
+			sb.WriteString(`</div>
+        </div>`)
 			if job.Company != "" || job.Location != "" {
 				sb.WriteString(`
-            <div class="company-info">
-                <span>`)
-				sb.WriteString(html.EscapeString(job.Company))
-				sb.WriteString(`</span>
-                <span>`)
-				sb.WriteString(html.EscapeString(job.Location))
-				sb.WriteString(`</span>
-            </div>`)
+        <div class="company-container flex-between">
+            <div class="company-name"><em>`)
+				sb.WriteString(renderFormattedTextGo(job.Company))
+				sb.WriteString(`</em></div>
+            <div class="job-location"><em>`)
+				sb.WriteString(renderFormattedTextGo(job.Location))
+				sb.WriteString(`</em></div>
+        </div>`)
 			}
 			if len(job.Bullets) > 0 {
 				sb.WriteString(`
-            <ul>`)
+        <ul>`)
 				for _, b := range job.Bullets {
 					sb.WriteString(`
-                <li>`)
-					sb.WriteString(html.EscapeString(b))
+            <li>`)
+					sb.WriteString(formatBulletActionVerbGo(b))
 					sb.WriteString(`</li>`)
 				}
 				sb.WriteString(`
-            </ul>`)
+        </ul>`)
 			}
 			if job.TechStack != "" {
 				sb.WriteString(`
-            <div class="tech-stack">Technologies / Skills Used : `)
-				sb.WriteString(html.EscapeString(job.TechStack))
-				sb.WriteString(`</div>`)
+        <div class="tech-used"><em>Technologies / Skills Used : `)
+				sb.WriteString(renderFormattedTextGo(job.TechStack))
+				sb.WriteString(`</em></div>`)
 			}
-			sb.WriteString(`
-        </div>`)
 		}
 		sb.WriteString(`
     </section>`)
 	}
 
 	if len(sr.Education) > 0 {
+		fontSize := "14.5px"
+		if isSinglePage {
+			fontSize = "13.5px"
+		}
 		sb.WriteString(`
 
     <section>
         <h2>EDUCATIONS</h2>`)
 		for _, edu := range sr.Education {
-			sb.WriteString(`
-        <div class="education-block">
-            <div class="job-header">
-                <span class="job-title">`)
-			sb.WriteString(html.EscapeString(edu.Institution))
-			sb.WriteString(`</span>
-                <span class="job-date">`)
-			sb.WriteString(html.EscapeString(edu.Date))
-			sb.WriteString(`</span>
-            </div>
-            <div>`)
-			sb.WriteString(html.EscapeString(edu.Degree))
-			sb.WriteString(`</div>
-        </div>`)
+			sb.WriteString(fmt.Sprintf(`
+        <div class="flex-between" style="font-size: %s; font-family: 'Times New Roman', Times, serif;">
+            <div><strong>%s</strong></div>
+            <div>%s</div>
+        </div>
+        <div class="edu-details"><em>%s</em></div>`,
+				fontSize,
+				renderFormattedTextGo(edu.Institution),
+				html.EscapeString(edu.Date),
+				renderFormattedTextGo(edu.Degree),
+			))
 		}
 		sb.WriteString(`
     </section>`)
@@ -806,17 +1008,20 @@ func BuildATSTemplateHTML(sr *models.StructuredResume, fitSinglePage ...bool) st
 
     <section>
         <h2>SKILLS</h2>
-        <ul class="skills-list">`)
+        <table class="skills-table">`)
 		for _, skill := range sr.Skills {
-			sb.WriteString(`
-            <li><span class="skill-category">`)
-			sb.WriteString(html.EscapeString(skill.Category))
-			sb.WriteString(` :</span> `)
-			sb.WriteString(html.EscapeString(skill.Items))
-			sb.WriteString(`</li>`)
+			cat := strings.TrimSpace(strings.TrimSuffix(skill.Category, ":"))
+			sb.WriteString(fmt.Sprintf(`
+            <tr>
+                <td><strong>%s :</strong></td>
+                <td>%s</td>
+            </tr>`,
+				renderFormattedTextGo(cat),
+				renderFormattedTextGo(skill.Items),
+			))
 		}
 		sb.WriteString(`
-        </ul>
+        </table>
     </section>`)
 	}
 
@@ -828,3 +1033,67 @@ func BuildATSTemplateHTML(sr *models.StructuredResume, fitSinglePage ...bool) st
 	return sb.String()
 }
 
+// ValidateResumeWithRecruiter acts as an independent Senior Technical Recruiter auditing the generated resume against original source resume text
+func (c *Client) ValidateResumeWithRecruiter(originalText string, generated *models.StructuredResume, modelOverride string) (*models.RecruiterValidationResult, error) {
+	if generated == nil {
+		return nil, fmt.Errorf("generated resume is nil")
+	}
+
+	genJSON, err := json.MarshalIndent(generated, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshal generated resume: %w", err)
+	}
+
+	prompt := fmt.Sprintf(`You are a Senior Executive Recruiter and Resume Verifier.
+Your task is to stringently audit an AI-generated/tailored resume against the candidate's ORIGINAL resume source text.
+
+Verify with 100%% precision:
+1. HALLUCINATIONS: Check if the generated resume contains any fabricated companies, fictitious job titles, degrees, or certifications that DO NOT exist in the original source resume text.
+2. OMISSIONS: Check if any real companies, employment history, or education entries from the original source resume were wrongfully deleted or omitted.
+3. DUMMY DATA: Check if there is any placeholder or dummy text (e.g. "Lorem Ipsum", "N/A", "Jane Doe", "[Company Name]", "TBD", "Filler", etc.).
+4. QUALITY ASSESSMENT: Rate the tailored resume from a recruiter's perspective (0-100 score).
+
+Respond ONLY with a valid JSON object matching this exact schema:
+{
+  "is_valid": true,
+  "hallucinations": [],
+  "omissions": [],
+  "dummy_data": [],
+  "quality_feedback": "<Detailed recruiter audit notes>",
+  "recruiter_score": 95
+}
+
+CRITICAL INSTRUCTIONS:
+- If NO hallucinations, omissions, or dummy data exist, return empty arrays [] for those fields and set "is_valid": true.
+- If any real company from the original resume is missing, list it in "omissions" and set "is_valid": false.
+- If any fake company/title/degree is added, list it in "hallucinations" and set "is_valid": false.
+
+ORIGINAL SOURCE RESUME TEXT:
+%s
+
+GENERATED STRUCTURED RESUME JSON:
+%s
+
+OUTPUT STRICTLY VALID JSON:`, truncate(originalText, 500000), string(genJSON))
+
+	rawResponse, err := c.generateCompletion(prompt, modelOverride, true)
+	if err != nil {
+		return nil, fmt.Errorf("recruiter validation failed: %w", err)
+	}
+
+	rawResponse = strings.TrimSpace(rawResponse)
+	if idx := strings.Index(rawResponse, "{"); idx >= 0 {
+		rawResponse = rawResponse[idx:]
+	}
+	if idx := strings.LastIndex(rawResponse, "}"); idx >= 0 {
+		rawResponse = rawResponse[:idx+1]
+	}
+
+	var valResult models.RecruiterValidationResult
+	if err := json.Unmarshal([]byte(rawResponse), &valResult); err != nil {
+		log.Printf("[AI Client] ValidateResumeWithRecruiter JSON parse error: %v. Raw: %s", err, rawResponse)
+		return nil, fmt.Errorf("failed to parse recruiter validation response: %w", err)
+	}
+
+	return &valResult, nil
+}

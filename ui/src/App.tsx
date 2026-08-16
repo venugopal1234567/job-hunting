@@ -113,7 +113,7 @@ function App() {
         </div>
       )}
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 relative">
+      <main className={`${activeTab === 'resume' ? 'w-full px-4 lg:px-6' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'} py-6 relative`}>
         {/* ─── Dashboard Tab ─── */}
         {activeTab === 'dashboard' && (
           <div>
@@ -174,17 +174,6 @@ function App() {
         {/* ─── Resume Tab ─── */}
         {activeTab === 'resume' && (
           <div className="w-full">
-            <div className="mb-5 no-print">
-              <h2 className="text-xl font-bold text-white">Resume Editor</h2>
-              <p className="text-sm text-gray-400 mt-1">
-                AI-powered editor · Accept/Reject changes · Live ATS score · PDF export
-                {selectedJob && (
-                  <span className="ml-2 text-brand-300">
-                    — Tailoring for: {selectedJob.title} @ {selectedJob.company}
-                  </span>
-                )}
-              </p>
-            </div>
             <ResumeEditor selectedJob={selectedJob} />
           </div>
         )}

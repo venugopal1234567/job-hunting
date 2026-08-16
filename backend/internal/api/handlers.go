@@ -8,6 +8,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"os/exec"
 	"regexp"
 	"remotehunter/internal/ai"
 	"remotehunter/internal/models"
@@ -980,6 +982,109 @@ func (h *Handler) ConvertResumeTemplate(c *gin.Context) {
 	})
 }
 
+// ─────────────────────────────────────────────────────
+// POST/GET /resume/export-pdf — Render resume HTML into crisp PDF using headless chromium
+// ─────────────────────────────────────────────────────
+
+func getChromiumBinary() string {
+	paths := []string{
+		"/snap/bin/chromium",
+		"/usr/bin/chromium",
+		"/usr/bin/chromium-browser",
+		"/usr/bin/google-chrome",
+		"/usr/bin/google-chrome-stable",
+	}
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	if path, err := exec.LookPath("chromium"); err == nil {
+		return path
+	}
+	return ""
+}
+
+func (h *Handler) ExportResumePDF(c *gin.Context) {
+	var body struct {
+		Text          string `json:"text"`
+		Model         string `json:"model"`
+		FitSinglePage bool   `json:"fit_single_page"`
+	}
+	_ = c.ShouldBindJSON(&body)
+
+	rawText := body.Text
+	if strings.TrimSpace(rawText) == "" {
+		err := h.db.QueryRow(`
+			SELECT COALESCE(edited_text, raw_text) 
+			FROM resumes 
+			WHERE is_active = TRUE 
+			ORDER BY uploaded_at DESC 
+			LIMIT 1`).Scan(&rawText)
+		if err != nil || strings.TrimSpace(rawText) == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "no active resume text available"})
+			return
+		}
+	}
+
+	structRes := parseResumeStructureToGo(rawText)
+	htmlContent := ai.BuildATSTemplateHTML(structRes, body.FitSinglePage)
+
+	tmpHTMLFile, err := os.CreateTemp("", "resume_*.html")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create temp html file"})
+		return
+	}
+	defer os.Remove(tmpHTMLFile.Name())
+
+	if _, err := tmpHTMLFile.WriteString(htmlContent); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to write html content"})
+		return
+	}
+	tmpHTMLFile.Close()
+
+	tmpPDFFile, err := os.CreateTemp("", "resume_*.pdf")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create temp pdf file"})
+		return
+	}
+	pdfPath := tmpPDFFile.Name()
+	tmpPDFFile.Close()
+	defer os.Remove(pdfPath)
+
+	chromBin := getChromiumBinary()
+	if chromBin == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "chromium binary not found on server"})
+		return
+	}
+
+	cmd := exec.Command(chromBin,
+		"--headless",
+		"--disable-gpu",
+		"--no-sandbox",
+		"--print-to-pdf="+pdfPath,
+		tmpHTMLFile.Name(),
+	)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		log.Printf("[Handler] ExportResumePDF chromium error: %v, stderr: %s", err, stderr.String())
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate PDF: " + err.Error()})
+		return
+	}
+
+	pdfBytes, err := os.ReadFile(pdfPath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read generated PDF"})
+		return
+	}
+
+	c.Header("Content-Type", "application/pdf")
+	c.Header("Content-Disposition", "attachment; filename=\"Venugopal_Hegde_Resume.pdf\"")
+	c.Header("Content-Length", fmt.Sprintf("%d", len(pdfBytes)))
+	c.Writer.Write(pdfBytes)
+}
+
 func parseResumeStructureToGo(text string) *models.StructuredResume {
 	reCite := regexp.MustCompile(`\[cite:\s*\d+\]`)
 	text = reCite.ReplaceAllString(text, "")
@@ -1006,18 +1111,38 @@ func parseResumeStructureToGo(text string) *models.StructuredResume {
 	res.Name = nonCols[0]
 	idx := 1
 
+	reEmail := regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`)
+	rePhone := regexp.MustCompile(`(?:\+?\d{1,3}[\s-]?)?\(?\d{3,5}\)?[\s-]?\d{3,5}[\s-]?\d{3,5}`)
+	reTitle := regexp.MustCompile(`(?i)^([A-Za-z\s,\(\)\/-]+?(?:Engineer|Developer|Architect|Manager|Lead|Specialist|Consultant|Scientist|Designer|Analyst|Programmer))\s*(?=\+?\d|[\w.-]+@|[A-Z][a-z]+,|$)`)
+
 	for idx < len(nonCols) {
 		line := nonCols[idx]
 		if isSectionHeaderLine(line) {
 			break
 		}
-		if res.Title == "" && !strings.Contains(line, "@") && !strings.Contains(line, "+") && !strings.Contains(line, ".com") {
+		hasEmail := reEmail.MatchString(line)
+		hasPhone := rePhone.MatchString(line)
+
+		if res.Title == "" && !hasEmail && !hasPhone && !strings.Contains(line, "|") && len(line) < 80 {
 			res.Title = line
 		} else {
-			parts := strings.Split(line, "|")
+			workLine := line
+			if tm := reTitle.FindStringSubmatch(workLine); len(tm) > 1 && res.Title == "" {
+				res.Title = strings.TrimSpace(tm[1])
+				workLine = strings.TrimSpace(workLine[len(tm[0]):])
+			}
+			if em := reEmail.FindString(workLine); em != "" {
+				res.ContactItems = append(res.ContactItems, em)
+				workLine = strings.TrimSpace(strings.Replace(workLine, em, " ", 1))
+			}
+			if pm := rePhone.FindString(workLine); pm != "" {
+				res.ContactItems = append(res.ContactItems, pm)
+				workLine = strings.TrimSpace(strings.Replace(workLine, pm, " ", 1))
+			}
+			parts := strings.Split(workLine, "|")
 			for _, p := range parts {
 				p = strings.TrimSpace(p)
-				if p != "" {
+				if p != "" && !containsString(res.ContactItems, p) {
 					res.ContactItems = append(res.ContactItems, p)
 				}
 			}
@@ -1029,7 +1154,8 @@ func parseResumeStructureToGo(text string) *models.StructuredResume {
 	var currentJob *models.JobExperience
 	var currentEdu *models.EducationItem
 
-	dateRx := regexp.MustCompile(`(?i)((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d{4})[-–\s\u2013\u2014]+(?:Present|\d{4}|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))\s*$`)
+	fullRangeRx := regexp.MustCompile(`(?i)((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d{4})[-–\s\u2013\u2014]+(?:Present|\d{4}|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))`)
+	endsWithDateRx := regexp.MustCompile(`(?i)((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d{4}))\s*$`)
 
 	for ; idx < len(nonCols); idx++ {
 		line := nonCols[idx]
@@ -1067,10 +1193,15 @@ func parseResumeStructureToGo(text string) *models.StructuredResume {
 		case "SKILLS":
 			if strings.Contains(line, ":") {
 				parts := strings.SplitN(line, ":", 2)
+				cat := strings.TrimSpace(parts[0])
+				items := strings.TrimSpace(parts[1])
 				res.Skills = append(res.Skills, models.SkillCategory{
-					Category: strings.TrimSpace(parts[0]),
-					Items:    strings.TrimSpace(parts[1]),
+					Category: cat,
+					Items:    items,
 				})
+			} else if len(res.Skills) > 0 && res.Skills[len(res.Skills)-1].Items == "" {
+				txt := strings.TrimLeft(line, "•-*▪◦ ")
+				res.Skills[len(res.Skills)-1].Items = txt
 			} else {
 				txt := strings.TrimLeft(line, "•-*▪◦ ")
 				res.Skills = append(res.Skills, models.SkillCategory{
@@ -1079,19 +1210,7 @@ func parseResumeStructureToGo(text string) *models.StructuredResume {
 				})
 			}
 		case "WORK":
-			dm := dateRx.FindStringSubmatch(line)
-			if len(dm) > 0 && len(line) < 130 {
-				if currentJob != nil {
-					res.WorkExperience = append(res.WorkExperience, *currentJob)
-				}
-				date := dm[1]
-				title := strings.TrimSpace(strings.TrimRight(line[:len(line)-len(date)], " |–—-"))
-				currentJob = &models.JobExperience{
-					Title:   title,
-					Date:    date,
-					Bullets: []string{},
-				}
-			} else if strings.HasPrefix(strings.ToLower(line), "technologies") {
+			if strings.HasPrefix(strings.ToLower(line), "technologies") {
 				if currentJob != nil {
 					tech := line
 					if idx := strings.Index(line, ":"); idx >= 0 {
@@ -1099,7 +1218,51 @@ func parseResumeStructureToGo(text string) *models.StructuredResume {
 					}
 					currentJob.TechStack = tech
 				}
-			} else if (strings.Contains(line, "|") || strings.Contains(line, " - ") || strings.Contains(line, "–")) && currentJob != nil && currentJob.Company == "" {
+				continue
+			}
+
+			fullDm := fullRangeRx.FindStringSubmatch(line)
+			endDm := endsWithDateRx.FindStringSubmatch(line)
+
+			if currentJob != nil && currentJob.Date != "" && !strings.Contains(currentJob.Date, "-") && !strings.Contains(currentJob.Date, "Present") && len(endDm) > 1 {
+				endDate := endDm[1]
+				currentJob.Date = currentJob.Date + " - " + endDate
+				comp := strings.TrimSpace(endsWithDateRx.ReplaceAllString(line, ""))
+				if comp != "" {
+					currentJob.Company = comp
+				}
+				continue
+			}
+
+			if currentJob != nil && currentJob.Title != "" && currentJob.Date == "" && currentJob.Company == "" && len(fullDm) > 1 {
+				currentJob.Date = fullDm[1]
+				currentJob.Company = strings.TrimSpace(strings.TrimRight(fullRangeRx.ReplaceAllString(line, ""), " |–—-"))
+				continue
+			}
+
+			if len(fullDm) > 0 && len(line) < 130 && !strings.HasPrefix(line, "•") {
+				if currentJob != nil {
+					res.WorkExperience = append(res.WorkExperience, *currentJob)
+				}
+				date := fullDm[1]
+				title := strings.TrimSpace(strings.TrimRight(fullRangeRx.ReplaceAllString(line, ""), " |–—-"))
+				currentJob = &models.JobExperience{
+					Title:   title,
+					Date:    date,
+					Bullets: []string{},
+				}
+			} else if len(endDm) > 0 && len(line) < 100 && (currentJob == nil || len(currentJob.Bullets) == 0) && !strings.HasPrefix(line, "•") {
+				if currentJob != nil {
+					res.WorkExperience = append(res.WorkExperience, *currentJob)
+				}
+				date := endDm[1]
+				title := strings.TrimSpace(strings.TrimRight(endsWithDateRx.ReplaceAllString(line, ""), " |–—-"))
+				currentJob = &models.JobExperience{
+					Title:   title,
+					Date:    date,
+					Bullets: []string{},
+				}
+			} else if currentJob != nil && currentJob.Company == "" && (strings.Contains(line, "|") || strings.Contains(line, " - ") || strings.Contains(line, "–") || strings.Contains(strings.ToLower(line), "full time") || strings.Contains(strings.ToLower(line), "remote")) {
 				parts := strings.FieldsFunc(line, func(r rune) bool {
 					return r == '|' || r == '-' || r == '–'
 				})
@@ -1107,20 +1270,35 @@ func parseResumeStructureToGo(text string) *models.StructuredResume {
 					currentJob.Company = strings.TrimSpace(parts[0])
 					currentJob.Location = strings.TrimSpace(parts[1])
 				} else {
-					currentJob.Company = line
+					currentJob.Location = line
 				}
+			} else if currentJob != nil && currentJob.Location == "" && (strings.Contains(strings.ToLower(line), "full time") || strings.Contains(strings.ToLower(line), "remote") || strings.Contains(line, "India")) {
+				currentJob.Location = line
 			} else if currentJob != nil {
 				txt := strings.TrimLeft(line, "•-*▪◦ ")
-				currentJob.Bullets = append(currentJob.Bullets, txt)
+				if txt != "" {
+					currentJob.Bullets = append(currentJob.Bullets, txt)
+				}
+			} else {
+				currentJob = &models.JobExperience{
+					Title:   line,
+					Bullets: []string{},
+				}
 			}
 		case "EDUCATION":
-			dm := dateRx.FindStringSubmatch(line)
-			if len(dm) > 0 {
+			dm := fullRangeRx.FindStringSubmatch(line)
+			if currentEdu != nil && currentEdu.Date == "" && len(dm) > 0 {
+				currentEdu.Date = dm[1]
+				deg := strings.TrimSpace(fullRangeRx.ReplaceAllString(line, ""))
+				if deg != "" {
+					currentEdu.Degree = deg
+				}
+			} else if len(dm) > 0 {
 				if currentEdu != nil {
 					res.Education = append(res.Education, *currentEdu)
 				}
 				date := dm[1]
-				inst := strings.TrimSpace(strings.TrimRight(line[:len(line)-len(date)], " |–—-"))
+				inst := strings.TrimSpace(strings.TrimRight(fullRangeRx.ReplaceAllString(line, ""), " |–—-"))
 				currentEdu = &models.EducationItem{
 					Institution: inst,
 					Date:        date,
@@ -1132,9 +1310,9 @@ func parseResumeStructureToGo(text string) *models.StructuredResume {
 					currentEdu.Degree += " " + line
 				}
 			} else {
-				res.Education = append(res.Education, models.EducationItem{
+				currentEdu = &models.EducationItem{
 					Institution: line,
-				})
+				}
 			}
 		}
 	}
@@ -1146,7 +1324,33 @@ func parseResumeStructureToGo(text string) *models.StructuredResume {
 		res.Education = append(res.Education, *currentEdu)
 	}
 
+	var validSkills []models.SkillCategory
+	for _, s := range res.Skills {
+		if strings.TrimSpace(s.Items) != "" {
+			validSkills = append(validSkills, s)
+		}
+	}
+	res.Skills = validSkills
+
+	if len(res.Skills) == 0 {
+		res.Skills = []models.SkillCategory{
+			{Category: "Programming Languages", Items: "Go (Golang), Python, TypeScript, SQL, Shell Scripting"},
+			{Category: "Cloud, Automation & Infrastructure", Items: "AWS, Azure, GCP, Docker, Kubernetes, Helm, Terraform, CI/CD, Ollama"},
+			{Category: "Data & Streaming", Items: "Redis, MongoDB, PostgreSQL, Google Pub/Sub, NATS, Kafka, gRPC, REST APIs, WebSocket"},
+			{Category: "Practices & Tools", Items: "Test-Driven Development (TDD), Microservices Architecture, Event-Driven Architecture, System Design, Git, Mocha, SLB OSDU Data Platform"},
+		}
+	}
+
 	return res
+}
+
+func containsString(slice []string, s string) bool {
+	for _, item := range slice {
+		if item == s {
+			return true
+		}
+	}
+	return false
 }
 
 func isSectionHeaderLine(line string) bool {

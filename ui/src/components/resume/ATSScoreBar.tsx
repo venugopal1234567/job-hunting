@@ -6,7 +6,6 @@ interface ATSScoreBarProps {
   previousScore?: number | null;
   loading?: boolean;
   jobTitle?: string;
-  pendingChanges?: number;
   onReanalyze?: () => void;
 }
 
@@ -15,7 +14,6 @@ const ATSScoreBar: React.FC<ATSScoreBarProps> = ({
   previousScore,
   loading,
   jobTitle,
-  pendingChanges = 0,
   onReanalyze,
 }) => {
   const circumference = 2 * Math.PI * 28;
@@ -102,11 +100,6 @@ const ATSScoreBar: React.FC<ATSScoreBarProps> = ({
         )}
         {!hasScore && !loading && (
           <p className="text-[10px] text-gray-500 mt-0.5">Select a job to see ATS score</p>
-        )}
-        {pendingChanges > 0 && (
-          <p className="text-[10px] text-amber-400 mt-0.5">
-            ⚡ {pendingChanges} pending change{pendingChanges > 1 ? 's' : ''} — accept to improve score
-          </p>
         )}
       </div>
 

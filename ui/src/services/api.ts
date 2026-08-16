@@ -119,6 +119,13 @@ export const convertResumeToTemplate = async (
   return data;
 };
 
+export const exportResumePDF = async (text?: string, fitSinglePage?: boolean): Promise<Blob> => {
+  const { data } = await api.post('/resume/export-pdf', { text, fit_single_page: fitSinglePage }, {
+    responseType: 'blob',
+  });
+  return data;
+};
+
 // ─── Settings ──────────────────────────────────────────────────────────────────
 
 export const getSettings = async (): Promise<Settings> => {

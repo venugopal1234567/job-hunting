@@ -186,3 +186,13 @@ type AISettings struct {
 	AvailableModels []NvidiaModel `json:"available_models"`
 }
 
+// RecruiterValidationResult represents an independent recruiter AI audit of a generated resume
+type RecruiterValidationResult struct {
+	IsValid         bool     `json:"is_valid"`
+	Hallucinations  []string `json:"hallucinations"`  // Any fake companies/roles/degrees added
+	Omissions       []string `json:"omissions"`       // Any real companies/roles omitted
+	DummyData       []string `json:"dummy_data"`       // Any placeholder or dummy strings found
+	QualityFeedback string   `json:"quality_feedback"` // Senior recruiter detailed assessment
+	RecruiterScore  int      `json:"recruiter_score"`  // 0-100 rating from recruiter standpoint
+}
+

@@ -131,163 +131,261 @@
 
 /* The page sheet itself in visual editor */
 .editor-textarea {
-  background: #ffffff !important;
-  color: #333333 !important;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
-  width: 8.5in !important;
   min-height: 11in !important;
   height: auto !important;
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5) !important;
   border-radius: 4px !important;
   border: 1px solid #e2e8f0 !important;
   box-sizing: border-box !important;
-  padding: 40px 35px !important;
+  padding: 18px 20px !important;
   margin: 0 auto !important;
   outline: none !important;
-  line-height: 1.5;
+  font-family: "Times New Roman", Times, serif !important;
+  color: #000 !important;
+  line-height: 1.25;
+  font-size: 13.5px;
+  background-color: #fff !important;
+  width: 100% !important;
+  max-width: 8.5in !important;
 }
 
 .editor-textarea.fit-page {
-  padding: 20px 25px !important;
-  font-size: 9.5pt !important;
-  line-height: 1.35 !important;
+  padding: 12px 18px !important;
+  font-size: 13px !important;
+  line-height: 1.2 !important;
 }
 
 /* Template internal elements styling */
 .editor-textarea header {
-  text-align: left;
-  margin-bottom: 18px;
-  border-bottom: 2px solid #2c3e50;
-  padding-bottom: 12px;
+  text-align: center !important;
+  margin-bottom: 12px !important;
+  border-bottom: none !important;
+  padding-bottom: 0 !important;
 }
 .editor-textarea.fit-page header {
-  margin-bottom: 10px;
-  padding-bottom: 6px;
+  margin-bottom: 8px !important;
 }
 
 .editor-textarea h1 {
-  font-size: 2.2em;
-  color: #2c3e50;
-  margin: 0 0 4px 0;
-  font-weight: 800;
-  text-align: left;
-  letter-spacing: 0.5px;
+  font-family: "Times New Roman", Times, serif !important;
+  font-size: 26px !important;
+  font-weight: bold !important;
+  text-transform: uppercase !important;
+  letter-spacing: 1px !important;
+  margin: 0 0 3px 0 !important;
+  text-align: center !important;
+  color: #000 !important;
 }
 .editor-textarea.fit-page h1 {
-  font-size: 1.8em;
-  margin: 0 0 2px 0;
+  font-size: 24px !important;
+  margin: 0 0 2px 0 !important;
+}
+
+.editor-textarea .subtitle {
+  font-family: "Times New Roman", Times, serif !important;
+  font-style: italic !important;
+  font-size: 15px !important;
+  margin: 0 0 6px 0 !important;
+  text-align: center !important;
+  color: #000 !important;
+}
+.editor-textarea.fit-page .subtitle {
+  font-size: 14px !important;
+  margin: 0 0 4px 0 !important;
 }
 
 .editor-textarea .contact-info {
-  font-size: 0.95em;
-  color: #555;
-  text-align: left;
+  font-family: "Times New Roman", Times, serif !important;
+  font-size: 13px !important;
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 12px !important;
+  text-align: center !important;
+  margin-top: 4px !important;
+  color: #000 !important;
 }
 .editor-textarea.fit-page .contact-info {
-  font-size: 0.88em;
+  font-size: 12px !important;
 }
 .editor-textarea .contact-info span {
-  margin: 0 6px;
+  display: inline-flex !important;
+  align-items: center !important;
+  margin: 0 !important;
+}
+.editor-textarea .contact-info svg {
+  width: 12px !important;
+  height: 12px !important;
+  min-width: 12px !important;
+  min-height: 12px !important;
+  max-width: 12px !important;
+  max-height: 12px !important;
+  margin-right: 4px !important;
+  vertical-align: -1px !important;
+  fill: #000 !important;
+  flex-shrink: 0 !important;
+  display: inline-block !important;
 }
 
 .editor-textarea h2 {
-  color: #2c3e50;
-  border-bottom: 1px solid #ccc;
-  padding-bottom: 3px;
-  margin-top: 18px;
-  margin-bottom: 10px;
-  font-size: 1.2em;
-  font-weight: 700;
-  text-transform: uppercase;
-  text-align: left;
+  font-family: "Times New Roman", Times, serif !important;
+  font-size: 15.5px !important;
+  text-transform: uppercase !important;
+  font-weight: bold !important;
+  color: #000 !important;
+  border-bottom: 1.5px solid #000 !important;
+  border-top: none !important;
+  padding-bottom: 2px !important;
+  margin-top: 12px !important;
+  margin-bottom: 6px !important;
+  text-align: left !important;
 }
 .editor-textarea.fit-page h2 {
-  margin-top: 8px;
-  margin-bottom: 4px;
-  font-size: 1.05em;
-  padding-bottom: 2px;
+  font-size: 14.5px !important;
+  margin-top: 8px !important;
+  margin-bottom: 5px !important;
 }
 
-.editor-textarea .job {
-  margin-bottom: 16px;
+.editor-textarea p {
+  font-family: "Times New Roman", Times, serif !important;
+  margin: 0 0 8px 0 !important;
+  font-size: 13.5px !important;
+  text-align: justify !important;
+  color: #000 !important;
 }
-.editor-textarea.fit-page .job {
-  margin-bottom: 8px;
+.editor-textarea.fit-page p {
+  font-size: 13px !important;
 }
 
-.editor-textarea .job-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 3px;
+.editor-textarea .flex-between {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: baseline !important;
+}
+
+.editor-textarea .job-title-container {
+  margin-bottom: 1px !important;
+  font-size: 14.5px !important;
+}
+.editor-textarea.fit-page .job-title-container {
+  font-size: 13.5px !important;
 }
 
 .editor-textarea .job-title {
-  font-size: 1.05em;
-  font-weight: bold;
-  color: #34495e;
+  font-family: "Times New Roman", Times, serif !important;
+  font-size: 14.5px !important;
+  color: #000 !important;
+  font-weight: normal !important;
+}
+.editor-textarea.fit-page .job-title {
+  font-size: 13.5px !important;
+}
+.editor-textarea .job-title strong {
+  font-weight: bold !important;
 }
 
 .editor-textarea .job-date {
-  font-weight: bold;
-  color: #7f8c8d;
-  font-size: 0.95em;
+  font-family: "Times New Roman", Times, serif !important;
+  font-size: 13.5px !important;
+  color: #000 !important;
+  font-weight: normal !important;
+}
+.editor-textarea.fit-page .job-date {
+  font-size: 13px !important;
 }
 
-.editor-textarea .company-info {
-  display: flex;
-  justify-content: space-between;
-  font-style: italic;
-  color: #555;
-  margin-bottom: 6px;
-  font-size: 0.95em;
+.editor-textarea .company-container {
+  font-family: "Times New Roman", Times, serif !important;
+  font-style: italic !important;
+  font-size: 13.5px !important;
+  margin-bottom: 4px !important;
+  color: #000 !important;
+}
+.editor-textarea.fit-page .company-container {
+  font-size: 13px !important;
+  margin-bottom: 3px !important;
+}
+
+.editor-textarea .company-name, .editor-textarea .job-location {
+  font-style: italic !important;
 }
 
 .editor-textarea ul {
-  margin-top: 0;
-  margin-bottom: 4px;
-  padding-left: 18px;
+  font-family: "Times New Roman", Times, serif !important;
+  margin: 0 0 4px 0 !important;
+  padding-left: 20px !important;
+  font-size: 13.5px !important;
+  text-align: justify !important;
+  list-style-type: disc !important;
+}
+.editor-textarea.fit-page ul {
+  font-size: 13px !important;
 }
 
 .editor-textarea li {
-  margin-bottom: 5px;
-  text-align: left;
+  font-family: "Times New Roman", Times, serif !important;
+  margin-bottom: 3px !important;
+  line-height: 1.28 !important;
+  list-style-type: disc !important;
+  color: #000 !important;
+  text-align: justify !important;
 }
 .editor-textarea.fit-page li {
-  margin-bottom: 2px;
+  margin-bottom: 2px !important;
+  line-height: 1.2 !important;
+}
+.editor-textarea li strong {
+  font-weight: bold !important;
 }
 
-.editor-textarea .tech-stack {
-  font-weight: bold;
-  font-size: 0.88em;
-  color: #2c3e50;
-  margin-top: 4px;
+.editor-textarea .tech-used {
+  font-family: "Times New Roman", Times, serif !important;
+  font-style: italic !important;
+  font-size: 13px !important;
+  margin-top: 3px !important;
+  margin-bottom: 10px !important;
+  color: #000 !important;
+}
+.editor-textarea.fit-page .tech-used {
+  font-size: 12.5px !important;
+  margin-bottom: 6px !important;
+}
+.editor-textarea .tech-used em {
+  font-style: italic !important;
 }
 
-.editor-textarea .skills-list {
-  list-style-type: none;
-  padding: 0;
+.editor-textarea .edu-details {
+  font-family: "Times New Roman", Times, serif !important;
+  font-style: italic !important;
+  font-size: 13.5px !important;
+  margin-top: 1px !important;
+  margin-bottom: 5px !important;
+  color: #000 !important;
+}
+.editor-textarea.fit-page .edu-details {
+  font-size: 13px !important;
 }
 
-.editor-textarea .skills-list li {
-  margin-bottom: 8px;
+.editor-textarea .skills-table {
+  font-family: "Times New Roman", Times, serif !important;
+  width: 100% !important;
+  font-size: 13.5px !important;
+  border-collapse: collapse !important;
+  margin-bottom: 6px !important;
 }
-.editor-textarea.fit-page .skills-list li {
-  margin-bottom: 4px;
-}
-
-.editor-textarea .skill-category {
-  font-weight: bold;
-  color: #2c3e50;
-  width: 210px;
-  display: inline-block;
+.editor-textarea.fit-page .skills-table {
+  font-size: 13px !important;
 }
 
-.editor-textarea .education-block {
-  margin-bottom: 12px;
+.editor-textarea .skills-table td {
+  vertical-align: top !important;
+  padding: 2.5px 0 !important;
 }
-.editor-textarea.fit-page .education-block {
-  margin-bottom: 8px;
+.editor-textarea .skills-table td:first-child {
+  font-weight: bold !important;
+  width: 26% !important;
+  padding-right: 8px !important;
 }
 
 .editor-textarea .kw-highlight {

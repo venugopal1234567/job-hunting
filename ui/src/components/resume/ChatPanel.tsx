@@ -9,12 +9,8 @@ import { getAISettings, NvidiaModel } from '../../services/api';
 interface ChatPanelProps {
   messages: ChatMessage[];
   loading: boolean;
-  trackedChanges: TrackedChange[];
   onSend: (text: string) => void;
-  onAccept: (id: string) => void;
-  onReject: (id: string) => void;
   onAnswerGap: (skill: string, answer: 'yes' | 'no' | string) => void;
-  onSelectEdit?: (id: string) => void;
   jobTitle?: string;
   activeModel?: string;
   onModelChange?: (model: string) => void;
@@ -24,11 +20,7 @@ interface ChatPanelProps {
 const ChatPanel: React.FC<ChatPanelProps> = ({
   messages,
   loading,
-  trackedChanges,
   onSend,
-  onAccept,
-  onReject,
-  onSelectEdit,
   jobTitle,
   activeModel: activeModelProp,
   onModelChange,
@@ -256,67 +248,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
                 {latestMessage.fullResumeReplacement}
               </pre>
             </details>
-          </div>
-        )}
-
-        {/* Proposed Edits Section */}
-        {trackedChanges.filter(c => c.status === 'pending').length > 0 && !loading && (
-          <div className="space-y-2">
-            <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Proposed Edits</p>
-            {trackedChanges.map(change => {
-              const status = change.status;
-              const isExpanded = expandedEdits[change.id] ?? true;
-
-              if (status !== 'pending') return null;
-
-              return (
-                <div key={change.id} className="rounded-xl border border-amber-500/30 bg-amber-500/5 text-xs overflow-hidden">
-                  <div
-                    className="flex items-center justify-between px-3 py-2 cursor-pointer"
-                    onClick={() => {
-                      toggleExpand(change.id);
-                      if (onSelectEdit) onSelectEdit(change.id);
-                    }}
-                  >
-                    <span className="font-semibold text-amber-300 flex items-center gap-1.5">
-                      <Sparkles className="w-3 h-3" />
-                      Proposed Edit
-                    </span>
-                    {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-gray-500" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-500" />}
-                  </div>
-
-                  {isExpanded && (
-                    <div className="px-3 pb-3 space-y-2">
-                      <div className="bg-red-500/10 rounded-lg p-2 border border-red-500/20">
-                        <p className="text-[10px] text-red-400 font-semibold mb-1">REMOVE</p>
-                        <p className="text-gray-400 line-through">{change.original}</p>
-                      </div>
-                      <div className="bg-emerald-500/10 rounded-lg p-2 border border-emerald-500/20">
-                        <p className="text-[10px] text-emerald-400 font-semibold mb-1">REPLACE WITH</p>
-                        <p className="text-gray-200">{change.replacement}</p>
-                      </div>
-                      {change.reason && (
-                        <p className="text-gray-500 italic">{change.reason}</p>
-                      )}
-                      <div className="flex gap-2 mt-2">
-                        <button
-                          onClick={() => onAccept(change.id)}
-                          className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 transition-all text-xs font-medium"
-                        >
-                          <Check className="w-3.5 h-3.5" /> Accept
-                        </button>
-                        <button
-                          onClick={() => onReject(change.id)}
-                          className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all text-xs font-medium"
-                        >
-                          <X className="w-3.5 h-3.5" /> Reject
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
           </div>
         )}
 
