@@ -133,7 +133,8 @@ export const useResumeEditor = (jobId?: string) => {
     setIsSaving(true);
     try {
       const result = await revertResumeText();
-      setEditorContent(result.text);
+      const textToUse = result.html || result.text;
+      setEditorContent(textToUse);
       setLastSavedSkills(result.skills);
       setIsDirty(false);
       return result;

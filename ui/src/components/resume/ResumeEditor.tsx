@@ -952,18 +952,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
     const result = await revertContent();
     if (result) {
       setChatMessages([]);
-      let textToUse = result.html || result.text;
-      if (!result.html && result.parsed) {
-        textToUse = convertStructuredToText(result.parsed);
-      }
-      applyFullResume(textToUse);
-      await saveContent(textToUse);
-
       setSaveMessage('Reverted to Original!');
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => setSaveMessage(''), 2500);
     }
-  }, [revertContent, setChatMessages, applyFullResume, saveContent]);
+  }, [revertContent, setChatMessages]);
 
   const handleApplyFullResume = useCallback(async (text: string) => {
     applyFullResume(text);
