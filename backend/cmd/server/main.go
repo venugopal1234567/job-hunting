@@ -9,6 +9,7 @@ import (
 	"remotehunter/internal/api"
 	"remotehunter/internal/config"
 	"remotehunter/internal/db"
+	"remotehunter/internal/repository/postgres"
 	"remotehunter/internal/scraper"
 )
 
@@ -32,6 +33,11 @@ func main() {
 		log.Fatalf("[Main] Migration failed: %v", err)
 	}
 
+	// Initialize Repositories
+	jobRepo := postgres.NewJobRepo(database)
+	resumeRepo := postgres.NewResumeRepo(database)
+	settingsRepo := postgres.NewSettingsRepo(database)
+
 	// Initialize AI client
 	aiClient := ai.NewClient(cfg.Nvidia.APIKey, cfg.Nvidia.BaseURL, cfg.Nvidia.Model)
 
@@ -40,8 +46,11 @@ func main() {
 	scheduler.Start()
 	defer scheduler.Stop()
 
+	// Initialize API Handler with repository injection
+	handler := api.NewHandler(jobRepo, resumeRepo, settingsRepo, aiClient, scheduler)
+
 	// Setup HTTP router and start server with extended timeouts (10 mins for AI requests)
-	router := api.SetupRouter(api.NewHandler(database, aiClient, scheduler))
+	router := api.SetupRouter(handler)
 
 	server := &http.Server{
 		Addr:         ":" + cfg.Server.Port,

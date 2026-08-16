@@ -192,12 +192,13 @@ func (s *Scheduler) upsertJob(job *models.Job) error {
 	cleanBoard := truncateStr(job.SourceBoard, 90)
 
 	_, err := s.db.Exec(`
-		INSERT INTO jobs (job_hash, title, company, location, country, source_url, source_board, description, salary_range, job_type, posted_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		INSERT INTO jobs (job_hash, title, company, location, country, source_url, source_board, description, salary_range, job_type, posted_at, scraped_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
 		ON CONFLICT (job_hash) DO UPDATE SET
 			description = CASE WHEN LENGTH(EXCLUDED.description) > LENGTH(jobs.description) THEN EXCLUDED.description ELSE jobs.description END,
 			source_url = EXCLUDED.source_url,
-			posted_at = EXCLUDED.posted_at`,
+			posted_at = EXCLUDED.posted_at,
+			scraped_at = NOW()`,
 		job.JobHash, cleanTitle, cleanCompany, cleanLocation, cleanCountry,
 		job.SourceURL, cleanBoard, cleanDesc, job.SalaryRange,
 		job.JobType, job.PostedAt,
