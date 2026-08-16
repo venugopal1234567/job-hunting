@@ -92,6 +92,23 @@ const generatePrintHTML = (text: string, fitToPage: boolean = false): string => 
     </section>`;
   }
 
+  if (parsed.skills.length > 0) {
+    bodyHtml += `
+    <section>
+        <h2>SKILLS</h2>
+        <table class="skills-table">
+            ${parsed.skills.map(skill => {
+              const cat = skill.category.replace(/:$/, '').trim();
+              return `
+              <tr>
+                  <td><strong>${renderFormattedText(cat)} :</strong></td>
+                  <td>${renderFormattedText(skill.items)}</td>
+              </tr>`;
+            }).join('')}
+        </table>
+    </section>`;
+  }
+
   if (parsed.workExperience.length > 0) {
     bodyHtml += `
     <section>
@@ -125,23 +142,6 @@ const generatePrintHTML = (text: string, fitToPage: boolean = false): string => 
             </div>
             <div class="edu-details"><em>${renderFormattedText(edu.degree)}</em></div>
         `).join('')}
-    </section>`;
-  }
-
-  if (parsed.skills.length > 0) {
-    bodyHtml += `
-    <section>
-        <h2>SKILLS</h2>
-        <table class="skills-table">
-            ${parsed.skills.map(skill => {
-              const cat = skill.category.replace(/:$/, '').trim();
-              return `
-              <tr>
-                  <td><strong>${renderFormattedText(cat)} :</strong></td>
-                  <td>${renderFormattedText(skill.items)}</td>
-              </tr>`;
-            }).join('')}
-        </table>
     </section>`;
   }
 
@@ -726,46 +726,47 @@ const formatResumeTextToHTML = (text: string, fitToPage: boolean = false): strin
 @media print {
     @page {
         size: letter;
-        margin: 6mm 8mm !important;
+        margin: 10mm 12.7mm !important;
     }
     html, body {
         background: #fff !important;
         color: #000 !important;
         font-family: "Times New Roman", Times, serif !important;
-        font-size: 9.5px !important;
-        line-height: 1.25 !important;
+        font-size: 10.5px !important;
+        line-height: 1.22 !important;
         padding: 0 !important;
         margin: 0 auto !important;
         max-width: 100% !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
     }
-    header { margin-bottom: 6px !important; }
-    h1 { font-size: 22px !important; margin: 0 0 2px 0 !important; }
-    .subtitle { font-size: 13.5px !important; margin-bottom: 3px !important; }
-    .contact-info { font-size: 9.5px !important; gap: 8px !important; margin-top: 2px !important; }
-    .contact-info svg { width: 10px !important; height: 10px !important; }
+    header { margin-bottom: 4px !important; }
+    h1 { font-size: 17px !important; margin: 0 0 1px 0 !important; }
+    .subtitle { font-size: 11px !important; margin-bottom: 2px !important; }
+    .contact-info { font-size: 9.5px !important; gap: 10px !important; margin-top: 1px !important; }
+    .contact-info span { font-size: 9.5px !important; }
+    .contact-info svg { width: 9px !important; height: 9px !important; }
     h2 { 
-        font-size: 11.5px !important; 
-        margin-top: 8px !important; 
+        font-size: 12px !important; 
+        margin-top: 6px !important; 
         margin-bottom: 3px !important; 
         padding-bottom: 1px !important;
         border-bottom: 1px solid #000 !important;
         page-break-after: avoid !important;
         break-after: avoid !important;
     }
-    p { font-size: 9.5px !important; line-height: 1.25 !important; margin: 0 0 4px 0 !important; }
-    ul { margin: 2px 0 4px 0 !important; padding-left: 14px !important; font-size: 9.5px !important; }
-    ul li { margin-bottom: 2px !important; line-height: 1.2 !important; font-size: 9.5px !important; }
+    p { font-size: 10.5px !important; line-height: 1.22 !important; margin: 0 0 3px 0 !important; }
+    ul { margin: 2px 0 4px 0 !important; padding-left: 15px !important; font-size: 10.5px !important; }
+    ul li { margin-bottom: 1.5px !important; line-height: 1.22 !important; font-size: 10.5px !important; }
     .job-title-container { margin-bottom: 0px !important; font-size: 10.5px !important; }
     .job-title { font-size: 10.5px !important; }
-    .job-date { font-size: 9.5px !important; }
-    .company-container { font-size: 9.5px !important; margin-bottom: 2px !important; }
-    .tech-used { font-size: 9px !important; margin-top: 2px !important; margin-bottom: 8px !important; }
-    .edu-details { font-size: 9.5px !important; margin-top: 0px !important; margin-bottom: 6px !important; }
-    .skills-table { font-size: 9.5px !important; margin-bottom: 6px !important; width: 100% !important; }
-    .skills-table td { padding: 1.5px 0 !important; font-size: 9.5px !important; }
-    section, .job-title-container, .company-container { page-break-inside: auto !important; break-inside: auto !important; }
+    .job-date { font-size: 10.5px !important; }
+    .company-container { font-size: 10.5px !important; margin-bottom: 1px !important; }
+    .tech-used { font-size: 9.5px !important; margin-top: 1px !important; margin-bottom: 4px !important; }
+    .edu-details { font-size: 10.5px !important; margin-top: 0px !important; margin-bottom: 3px !important; }
+    .skills-table { font-size: 10.5px !important; margin-bottom: 4px !important; width: 100% !important; }
+    .skills-table td { padding: 1.5px 0 !important; font-size: 10.5px !important; }
+    section, .job-title-container, .company-container { page-break-inside: avoid !important; break-inside: avoid !important; }
 }
 </style>`;
 
