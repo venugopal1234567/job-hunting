@@ -31,10 +31,10 @@ function escapeHTML(str: string): string {
 
 function formatBulletActionVerb(str: string): string {
   if (!str) return '';
-  let s = str.replace(/^[•\-*▪◦\s]+/, '').trim();
+  let s = str.replace(/^[•\-▪◦\s]+/, '').trim();
   s = escapeHTML(s);
 
-  // Convert markdown **word** or <strong>word</strong> coming from AI into bold HTML tags
+  // Convert markdown **keyword** or <strong>keyword</strong> coming from AI into bold HTML tags
   s = s.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
   s = s.replace(/&lt;strong&gt;(.*?)&lt;\/strong&gt;/gi, '<strong>$1</strong>');
   s = s.replace(/&lt;b&gt;(.*?)&lt;\/b&gt;/gi, '<strong>$1</strong>');

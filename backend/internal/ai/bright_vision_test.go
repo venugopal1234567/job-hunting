@@ -2,6 +2,7 @@ package ai
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -508,5 +509,166 @@ func TestChatWithResumeHTMLInput(t *testing.T) {
 
 	if !strings.Contains(resp.Message, "Kubernetes") {
 		t.Errorf("Expected response message to acknowledge Kubernetes experience, got %s", resp.Message)
+	}
+}
+
+func TestChatWithResumeBolding(t *testing.T) {
+	callCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		var req map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("Failed to decode request body: %v", err)
+		}
+
+		messages, ok := req["messages"].([]interface{})
+		if !ok || len(messages) == 0 {
+			t.Fatalf("Expected messages in completion request")
+		}
+
+		userPromptMsg := messages[len(messages)-1].(map[string]interface{})["content"].(string)
+
+		// First AI call: Resume generation with JD keyword bolding
+		if callCount == 1 {
+			if !strings.Contains(userPromptMsg, "MANDATORY KEYWORD BOLDING ACROSS ALL SECTIONS") {
+				t.Errorf("Prompt missing MANDATORY KEYWORD BOLDING ACROSS ALL SECTIONS instruction")
+			}
+			if !strings.Contains(userPromptMsg, "work_experience") {
+				t.Errorf("Prompt missing work_experience in bolding instructions")
+			}
+
+			resp := map[string]interface{}{
+				"choices": []map[string]interface{}{
+					{
+						"message": map[string]interface{}{
+							"content": `{
+								"message": "I have updated your resume to bold key job description technologies across all sections.",
+								"proposed_edits": [],
+								"gap_prompts": [],
+								"full_resume_replacement": "",
+								"structured_resume": {
+									"name": "Venugopal Hegde",
+									"title": "Senior Software Development Engineer",
+									"contact_items": ["+919632968298", "venuhegde6@gmail.com", "Hosagadde, Sirsi, Karnataka 581318"],
+									"summary": "Senior Software Development Engineer with 7+ years of experience in **Go**, **Kubernetes**, and **gRPC** microservices.",
+									"skills": [
+										{"category": "Programming Languages", "items": "**Go**, Python, Rust, **TypeScript**, SQL"},
+										{"category": "Databases", "items": "**PostgreSQL**, **Redis**, **MongoDB**, **etcd**"}
+									],
+									"work_experience": [
+										{
+											"title": "Backend Developer (FDPlan - Schlumberger)",
+											"date": "Jun 2023 - Present",
+											"company": "EPAM Systems",
+											"location": "Bangalore, India (Remote)",
+											"bullets": [
+												"**Drive** independent backend engineering using **Go** and **Kubernetes** for enterprise data platforms.",
+												"**Architected** microservices using **gRPC** and **REST APIs** with **PostgreSQL** and **Redis**."
+											],
+											"tech_stack": "**Go**, **Kubernetes**, **client-go**, **controller-runtime**, **gRPC**, **Redis**, **PostgreSQL**"
+										}
+									],
+									"education": [
+										{
+											"institution": "Impact College of Engineering & Applied Sciences",
+											"date": "2015 - 2019",
+											"degree": "Bachelor of Engineering in Electronics & Communications"
+										}
+									]
+								}
+							}`,
+						},
+					},
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		// Second AI call: AI quality check on the generated bolding vs Job Description
+		if !strings.Contains(userPromptMsg, "ATS QUALITY AUDITOR") {
+			t.Errorf("Expected 2nd AI call prompt to contain ATS QUALITY AUDITOR, got: %s", userPromptMsg)
+		}
+		if !strings.Contains(userPromptMsg, "<strong>Go</strong>") {
+			t.Errorf("Expected 2nd AI call prompt to include rendered HTML tags, got: %s", userPromptMsg)
+		}
+
+		auditResp := map[string]interface{}{
+			"choices": []map[string]interface{}{
+				{
+					"message": map[string]interface{}{
+						"content": `{
+							"is_valid": true,
+							"reason": "Resume correctly bolded high-value technical keywords matching the Job Description (Go, Kubernetes, gRPC, PostgreSQL, Redis, etcd) and leading action verbs across summary, experience, and skills."
+						}`,
+					},
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(auditResp)
+	}))
+	defer server.Close()
+
+	client := NewClient("mock-key", server.URL, "z-ai/glm-5.2")
+
+	htmlText := `<!DOCTYPE html><html><body><header><h1>Venugopal Hegde</h1></header><section><h2>PROFESSIONAL SUMMARY</h2><p>Senior Software Engineer</p></section></body></html>`
+
+	req := &models.ChatRequest{
+		Message:    "Improve ATS score",
+		ResumeText: htmlText,
+		JobID:      "44ebcb97-8525-446e-940d-16becf656b62",
+	}
+
+	// Step 1: Generate resume with bolded JD keywords
+	resp, err := client.ChatWithResume(req, brightVisionJobDescription, "")
+	if err != nil {
+		t.Fatalf("ChatWithResume for Bolding test failed: %v", err)
+	}
+
+	if resp.HTML == "" {
+		t.Fatalf("Expected non-empty HTML in response")
+	}
+
+	// Assert HTML renders <strong> tags for key JD terms
+	if !strings.Contains(resp.HTML, "<strong>Go</strong>") {
+		t.Errorf("Expected HTML to render <strong>Go</strong> in summary/skills, got HTML: %s", resp.HTML)
+	}
+	if !strings.Contains(resp.HTML, "<strong>Kubernetes</strong>") {
+		t.Errorf("Expected HTML to render <strong>Kubernetes</strong>, got HTML: %s", resp.HTML)
+	}
+	if !strings.Contains(resp.HTML, "<strong>Architected</strong>") {
+		t.Errorf("Expected HTML to render <strong>Architected</strong> bullet verb, got HTML: %s", resp.HTML)
+	}
+
+	// Step 2: Second AI Call — pass the generated HTML back to AI to verify JD keyword bolding accuracy
+	auditPrompt := fmt.Sprintf(`You are an ATS QUALITY AUDITOR. Inspect the following HTML resume against the Job Description.
+Check if it correctly bolds ONLY high-value Job Description technical keywords (such as Go, Kubernetes, client-go, controller-runtime, gRPC, PostgreSQL, Redis, etcd, NATS, TDD) and leading action verbs without bolding arbitrary non-essential text.
+
+JOB DESCRIPTION:
+%s
+
+GENERATED RESUME HTML:
+%s
+
+OUTPUT STRICTLY JSON:
+{"is_valid": true, "reason": "Reasoning here"}`, brightVisionJobDescription, resp.HTML)
+
+	auditRaw, err := client.generateCompletion(auditPrompt, "", true)
+	if err != nil {
+		t.Fatalf("Second AI verification call failed: %v", err)
+	}
+
+	var auditRes struct {
+		IsValid bool   `json:"is_valid"`
+		Reason  string `json:"reason"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(auditRaw)), &auditRes); err != nil {
+		t.Fatalf("Failed to parse 2nd AI verification response: %v, raw: %s", err, auditRaw)
+	}
+
+	if !auditRes.IsValid {
+		t.Errorf("2nd AI verification failed: %s", auditRes.Reason)
 	}
 }

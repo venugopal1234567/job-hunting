@@ -460,8 +460,9 @@ CRITICAL RULES & CONSTRAINTS:
 - MANDATORY ZERO WORK EXPERIENCE LOSS: You MUST preserve EVERY SINGLE work experience entry and company from the candidate's original resume. NEVER delete, omit, or strip off any company or job role (e.g., EPAM Systems Backend Developer, EPAM Systems Portability Engineer, and InTimeTec GoLang Developer MUST ALL BE INCLUDED).
 - PRESERVE OFFICIAL JOB TITLES & NO HALLUCINATIONS: Keep the exact official job titles from the candidate's original resume (e.g. "Senior Software Development Engineer"). Do NOT change official job titles to match the target job title (e.g., do NOT change "Senior Software Development Engineer" to "Senior Golang Developer"). Do NOT invent fake technical details or assign tools to specific roles where they were not listed in the original source text.
 - SECTION ORDERING IS MANDATORY: 1. Professional Summary, 2. Work Experiences, 3. Educations, 4. Skills.
-- The "highlight_keywords" array MUST contain all high-value keywords, technologies, skills, and metrics that should be highlighted on the resume for maximum ATS/recruiter impact.
-- All bullet points in work_experience MUST be strong, concise, and impact-oriented sentences tailored to the target job description. Wrap key action verbs or critical achievement terms in markdown bold syntax like **Architected**, **Spearheaded**, **Built**, or **Optimized** so they render with proper bolding.
+- MANDATORY KEYWORD BOLDING ACROSS ALL SECTIONS: In "summary", "work_experience" (both bullet points and tech_stack), and "skills", you MUST wrap the high-value technical keywords, frameworks, databases, and core skills that match the target Job Description in markdown bold syntax (for example: **Go**, **Kubernetes**, **client-go**, **controller-runtime**, **NATS**, **gRPC**, **PostgreSQL**, **Redis**, **Distributed Tracing**, **TDD**).
+- BULLET POINT VERBS: Every bullet point in work_experience MUST also start with a strong bold action verb (e.g. **Architected**, **Spearheaded**, **Developed**, **Built**, **Optimized**).
+- Do NOT bold arbitrary words or whole filler phrases. Bold ONLY the action verbs and the specific high-value Job Description keywords.
 - Ensure proper spacing after punctuation.
 - Return [] for "gap_prompts" and null for "structured_resume" if not generating a resume edit.
 
@@ -589,7 +590,7 @@ OUTPUT STRICTLY VALID JSON:`, fitInstruction, truncate(rawText, 500000))
 }
 
 func renderFormattedTextGo(str string) string {
-	s := regexp.MustCompile(`^[•\-*▪◦\s]+`).ReplaceAllString(str, "")
+	s := regexp.MustCompile(`^[•\-▪◦\s]+`).ReplaceAllString(str, "")
 	s = html.EscapeString(strings.TrimSpace(s))
 	s = regexp.MustCompile(`\*\*(.*?)\*\*`).ReplaceAllString(s, "<strong>$1</strong>")
 	s = regexp.MustCompile(`(?i)&lt;strong&gt;(.*?)&lt;/strong&gt;`).ReplaceAllString(s, "<strong>$1</strong>")
@@ -601,7 +602,7 @@ func formatBulletActionVerbGo(str string) string {
 	if str == "" {
 		return ""
 	}
-	s := regexp.MustCompile(`^[•\-*▪◦\s]+`).ReplaceAllString(str, "")
+	s := regexp.MustCompile(`^[•\-▪◦\s]+`).ReplaceAllString(str, "")
 	s = html.EscapeString(strings.TrimSpace(s))
 
 	s = regexp.MustCompile(`\*\*(.*?)\*\*`).ReplaceAllString(s, "<strong>$1</strong>")
