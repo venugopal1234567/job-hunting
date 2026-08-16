@@ -960,6 +960,28 @@ func BuildATSTemplateHTML(sr *models.StructuredResume, fitSinglePage ...bool) st
     </section>`)
 	}
 
+	if len(sr.Skills) > 0 {
+		sb.WriteString(`
+
+    <section>
+        <h2>SKILLS</h2>
+        <table class="skills-table">`)
+		for _, skill := range sr.Skills {
+			cat := strings.TrimSpace(strings.TrimSuffix(skill.Category, ":"))
+			sb.WriteString(fmt.Sprintf(`
+            <tr>
+                <td><strong>%s :</strong></td>
+                <td>%s</td>
+            </tr>`,
+				renderFormattedTextGo(cat),
+				renderFormattedTextGo(skill.Items),
+			))
+		}
+		sb.WriteString(`
+        </table>
+    </section>`)
+	}
+
 	if len(sr.WorkExperience) > 0 {
 		sb.WriteString(`
 
@@ -1032,28 +1054,6 @@ func BuildATSTemplateHTML(sr *models.StructuredResume, fitSinglePage ...bool) st
 			))
 		}
 		sb.WriteString(`
-    </section>`)
-	}
-
-	if len(sr.Skills) > 0 {
-		sb.WriteString(`
-
-    <section>
-        <h2>SKILLS</h2>
-        <table class="skills-table">`)
-		for _, skill := range sr.Skills {
-			cat := strings.TrimSpace(strings.TrimSuffix(skill.Category, ":"))
-			sb.WriteString(fmt.Sprintf(`
-            <tr>
-                <td><strong>%s :</strong></td>
-                <td>%s</td>
-            </tr>`,
-				renderFormattedTextGo(cat),
-				renderFormattedTextGo(skill.Items),
-			))
-		}
-		sb.WriteString(`
-        </table>
     </section>`)
 	}
 
