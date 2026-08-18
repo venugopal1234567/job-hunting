@@ -132,9 +132,7 @@ export interface ChatMessage {
   content: string;
   proposedEdits?: ProposedEdit[];
   gapPrompts?: GapQuestionPrompt[];
-  fullResumeReplacement?: string;
   structuredResume?: StructuredResume;
-  html?: string;
   timestamp: number;
 }
 
@@ -158,4 +156,5 @@ export interface ResumeVersion {
   label: string;
   applied_at: string;
   source: 'editor' | 'upload';
+  snapshot_structured?: StructuredResume;
 }

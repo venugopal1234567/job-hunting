@@ -21,7 +21,9 @@ func (h *Handler) ChatResume(c *gin.Context) {
 	activeModel := h.getActiveModelWithContext(ctx)
 
 	jobContext := ""
-	if req.JobID != "" {
+	if req.CustomJD != "" {
+		jobContext = fmt.Sprintf("Custom Job Description / Context:\n%s", req.CustomJD)
+	} else if req.JobID != "" {
 		job, err := h.jobRepo.GetJobByID(ctx, req.JobID)
 		if err == nil && job != nil {
 			jobContext = fmt.Sprintf("Title: %s\nCompany: %s\nDescription:\n%s", job.Title, job.Company, job.Description)

@@ -67,16 +67,26 @@ func (h *Handler) UploadResume(c *gin.Context) {
 		resObj.HasPDF = true
 	}
 
-	if err := h.resumeRepo.SaveResume(c.Request.Context(), resObj); err != nil {
+	ctx := c.Request.Context()
+	activeModel := h.getActiveModelWithContext(ctx)
+
+	// Phase 2: Convert to Structured template via AI immediately
+	structRes, _, aiErr := h.aiClient.ConvertResumeToTemplate(parsedText, activeModel, false)
+	if aiErr == nil && structRes != nil {
+		resObj.InitialStructured = structRes
+	}
+
+	if err := h.resumeRepo.SaveResume(ctx, resObj); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save resume: " + err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":  "Resume uploaded and parsed successfully",
-		"id":       resObj.ID,
-		"filename": resObj.Filename,
-		"skills":   resObj.ExtractedSkills,
+		"message":            "Resume uploaded and parsed successfully",
+		"id":                 resObj.ID,
+		"filename":           resObj.Filename,
+		"skills":             resObj.ExtractedSkills,
+		"initial_structured": resObj.InitialStructured,
 	})
 }
 
@@ -136,48 +146,80 @@ func (h *Handler) GetActiveResumePDF(c *gin.Context) {
 
 // GET /resume/text
 func (h *Handler) GetResumeFullText(c *gin.Context) {
-	text, err := h.resumeRepo.GetResumeFullText(c.Request.Context())
+	ctx := c.Request.Context()
+	structured, err := h.resumeRepo.GetResumeContent(ctx)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	if text == "" {
-		c.JSON(http.StatusNotFound, gin.H{"error": "No active resume found"})
-		return
+
+	rawText, _ := h.resumeRepo.GetResumeFullText(ctx)
+	activeResume, _ := h.resumeRepo.GetActiveResume(ctx)
+
+	hasEdits := false
+	if activeResume != nil && activeResume.EditedStructured != nil {
+		hasEdits = true
 	}
-	c.JSON(http.StatusOK, gin.H{"text": text})
+
+	c.JSON(http.StatusOK, gin.H{
+		"structured":   structured,
+		"has_raw_text": rawText != "",
+		"has_edits":    hasEdits,
+	})
 }
 
 // PUT /resume/text
 func (h *Handler) UpdateResumeText(c *gin.Context) {
-	var body struct {
-		Text string `json:"text"`
-	}
-	if err := c.ShouldBindJSON(&body); err != nil || body.Text == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body or empty text"})
+	var body models.UpdateResumeRequest
+	if err := c.ShouldBindJSON(&body); err != nil || body.Structured == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body or empty structured resume"})
 		return
 	}
 
-	if err := h.resumeRepo.UpdateResumeText(c.Request.Context(), body.Text); err != nil {
+	if err := h.resumeRepo.UpdateResumeStructured(c.Request.Context(), body.Structured); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Resume updated successfully", "text": body.Text})
+	c.JSON(http.StatusOK, gin.H{"message": "Resume updated successfully", "structured": body.Structured})
 }
 
 // POST /resume/revert
 func (h *Handler) RevertResumeText(c *gin.Context) {
-	revertedText, err := h.resumeRepo.RevertResumeText(c.Request.Context())
+	revertedStruct, err := h.resumeRepo.RevertResume(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Reverted to previous version",
-		"text":    revertedText,
+		"message":    "Reverted to previous version",
+		"structured": revertedStruct,
 	})
+}
+
+// POST /resume/active/analyze
+func (h *Handler) AnalyzeResume(c *gin.Context) {
+	ctx := c.Request.Context()
+	rawText, err := h.resumeRepo.GetResumeFullText(ctx)
+	if err != nil || rawText == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No active resume raw text found to analyze"})
+		return
+	}
+
+	activeModel := h.getActiveModelWithContext(ctx)
+	structRes, _, err := h.aiClient.ConvertResumeToTemplate(rawText, activeModel, false)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "AI structuring failed: " + err.Error()})
+		return
+	}
+
+	if err := h.resumeRepo.SetInitialStructured(ctx, structRes); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save initial structured: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"structured": structRes})
 }
 
 // GET /resume/versions
@@ -208,11 +250,11 @@ func (h *Handler) SaveResumeVersion(c *gin.Context) {
 	}
 
 	var req struct {
-		Label string `json:"label"`
-		Text  string `json:"text"`
+		Label      string                  `json:"label"`
+		Structured *models.StructuredResume `json:"snapshot_structured"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil || req.Text == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Text is required"})
+	if err := c.ShouldBindJSON(&req); err != nil || req.Structured == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Snapshot structured resume is required"})
 		return
 	}
 	if req.Label == "" {
@@ -220,11 +262,12 @@ func (h *Handler) SaveResumeVersion(c *gin.Context) {
 	}
 
 	version := &models.ResumeVersion{
-		ID:           uuid.New().String(),
-		ResumeID:     resumeID,
-		Label:        req.Label,
-		SnapshotText: req.Text,
-		AppliedAt:    time.Now(),
+		ID:                 uuid.New().String(),
+		ResumeID:           resumeID,
+		Label:              req.Label,
+		SnapshotText:       "", // keep text empty since snapshot_structured is populated
+		SnapshotStructured: req.Structured,
+		AppliedAt:          time.Now(),
 	}
 
 	if err := h.resumeRepo.SaveVersion(ctx, version); err != nil {
@@ -243,5 +286,5 @@ func (h *Handler) GetVersionText(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Version not found"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"text": version.SnapshotText})
+	c.JSON(http.StatusOK, gin.H{"structured": version.SnapshotStructured})
 }

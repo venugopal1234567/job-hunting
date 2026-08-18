@@ -60,6 +60,8 @@ CREATE TABLE IF NOT EXISTS resumes (
 ALTER TABLE resumes ADD COLUMN IF NOT EXISTS edited_text TEXT;
 ALTER TABLE resumes ADD COLUMN IF NOT EXISTS pdf_data BYTEA;
 ALTER TABLE resumes ADD COLUMN IF NOT EXISTS rendered_html TEXT;
+ALTER TABLE resumes ADD COLUMN IF NOT EXISTS initial_structured JSONB;
+ALTER TABLE resumes ADD COLUMN IF NOT EXISTS edited_structured JSONB;
 
 -- 4b. Resume Versions Table (applied snapshots)
 CREATE TABLE IF NOT EXISTS resume_versions (
@@ -69,7 +71,8 @@ CREATE TABLE IF NOT EXISTS resume_versions (
     snapshot_text TEXT NOT NULL,
     label VARCHAR(255),
     applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    source VARCHAR(50) DEFAULT 'editor'
+    source VARCHAR(50) DEFAULT 'editor',
+    snapshot_structured JSONB
 );
 
 CREATE INDEX IF NOT EXISTS idx_resume_versions_resume ON resume_versions(resume_id);

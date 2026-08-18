@@ -35,15 +35,17 @@ type JobsResponse struct {
 
 // Resume represents an uploaded candidate resume
 type Resume struct {
-	ID              string    `json:"id"`
-	Filename        string    `json:"filename"`
-	RawText         string    `json:"raw_text,omitempty"`
-	ExtractedSkills []string  `json:"extracted_skills"`
-	RawTextLength   int       `json:"raw_text_length"`
-	UploadedAt      time.Time `json:"uploaded_at"`
-	IsActive        bool      `json:"is_active"`
-	HasPDF          bool      `json:"has_pdf"`
-	PDFBytes        []byte    `json:"-"`
+	ID                string            `json:"id"`
+	Filename          string            `json:"filename"`
+	RawText           string            `json:"raw_text,omitempty"`
+	ExtractedSkills   []string          `json:"extracted_skills"`
+	RawTextLength     int               `json:"raw_text_length"`
+	UploadedAt        time.Time         `json:"uploaded_at"`
+	IsActive          bool              `json:"is_active"`
+	HasPDF            bool              `json:"has_pdf"`
+	PDFBytes          []byte            `json:"-"`
+	InitialStructured *StructuredResume `json:"initial_structured,omitempty"`
+	EditedStructured  *StructuredResume `json:"edited_structured,omitempty"`
 }
 
 // GapQuestion represents an interview preparation question for a missing skill
@@ -112,22 +114,24 @@ type GapQuestionPrompt struct {
 
 // ChatRequest is the request payload for POST /resume/chat
 type ChatRequest struct {
-	Message    string `json:"message"`
-	ResumeText string `json:"resume_text"`
-	JobID      string `json:"job_id,omitempty"`
-	Model      string `json:"model,omitempty"` // optional per-request model override
+	Message          string            `json:"message"`
+	ResumeText       string            `json:"resume_text,omitempty"`
+	ResumeStructured *StructuredResume `json:"resume_structured,omitempty"`
+	JobID            string            `json:"job_id,omitempty"`
+	CustomJD         string            `json:"custom_jd,omitempty"`
+	Model            string            `json:"model,omitempty"` // optional per-request model override
 }
 
 // StructuredResume represents complete AI generated HTML structured components
 type StructuredResume struct {
-	Name            string         `json:"name"`
-	Title           string         `json:"title"`
-	ContactItems    []string       `json:"contact_items"`
-	Summary         string         `json:"summary"`
-	Skills          []SkillCategory `json:"skills"`
-	WorkExperience  []JobExperience `json:"work_experience"`
-	Education       []EducationItem `json:"education"`
-	HighlightKeywords []string     `json:"highlight_keywords"`
+	Name              string          `json:"name"`
+	Title             string          `json:"title"`
+	ContactItems      []string        `json:"contact_items"`
+	Summary           string          `json:"summary"`
+	Skills            []SkillCategory `json:"skills"`
+	WorkExperience    []JobExperience `json:"work_experience"`
+	Education         []EducationItem `json:"education"`
+	HighlightKeywords []string        `json:"highlight_keywords"`
 }
 
 type SkillCategory struct {
@@ -152,25 +156,28 @@ type EducationItem struct {
 
 // ChatResponse is the AI assistant's response
 type ChatResponse struct {
-	Message               string              `json:"message"`
-	ProposedEdits         []ProposedEdit      `json:"proposed_edits,omitempty"`
-	GapPrompts            []GapQuestionPrompt `json:"gap_prompts,omitempty"`
-	FullResumeReplacement string              `json:"full_resume_replacement,omitempty"`
-	StructuredResume      *StructuredResume   `json:"structured_resume,omitempty"`
-	HTML                  string              `json:"html,omitempty"`
+	Message          string              `json:"message"`
+	ProposedEdits    []ProposedEdit      `json:"proposed_edits,omitempty"`
+	GapPrompts       []GapQuestionPrompt `json:"gap_prompts,omitempty"`
+	StructuredResume *StructuredResume   `json:"structured_resume,omitempty"`
 }
 
 // ResumeVersion is a snapshot of a resume at the time of applying
 type ResumeVersion struct {
-	ID           string     `json:"id"`
-	ResumeID     string     `json:"resume_id"`
-	JobID        string     `json:"job_id,omitempty"`
-	JobTitle     string     `json:"job_title,omitempty"`
-	JobCompany   string     `json:"job_company,omitempty"`
-	SnapshotText string     `json:"snapshot_text"`
-	Label        string     `json:"label"`
-	AppliedAt    time.Time  `json:"applied_at"`
-	Source       string     `json:"source"`
+	ID                 string            `json:"id"`
+	ResumeID           string            `json:"resume_id"`
+	JobID              string            `json:"job_id,omitempty"`
+	JobTitle           string            `json:"job_title,omitempty"`
+	JobCompany         string            `json:"job_company,omitempty"`
+	SnapshotText       string            `json:"snapshot_text"`
+	Label              string            `json:"label"`
+	AppliedAt          time.Time         `json:"applied_at"`
+	Source             string            `json:"source"`
+	SnapshotStructured *StructuredResume `json:"snapshot_structured,omitempty"`
+}
+
+type UpdateResumeRequest struct {
+	Structured *StructuredResume `json:"structured"`
 }
 
 // NvidiaModel represents an available NVIDIA AI model
@@ -197,4 +204,3 @@ type RecruiterValidationResult struct {
 	QualityFeedback string   `json:"quality_feedback"` // Senior recruiter detailed assessment
 	RecruiterScore  int      `json:"recruiter_score"`  // 0-100 rating from recruiter standpoint
 }
-

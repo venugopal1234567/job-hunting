@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Loader2, FileText } from 'lucide-react';
-import { Job } from '../../types';
-import { getResumeFullText, getActiveResume, analyzeJob, uploadResume, convertResumeToTemplate } from '../../services/api';
+import { Job, StructuredResume } from '../../types';
+import { getResumeContent, getActiveResume, analyzeJob, uploadResume, convertResumeToTemplate } from '../../services/api';
 import { useResumeEditor } from '../../hooks/useResumeEditor';
 import ChatPanel from './ChatPanel';
 import AppliedDialog from './AppliedDialog';
@@ -16,21 +16,23 @@ interface ResumeEditorProps {
 
 const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
   const {
-    editorContent,
+    canvasStructured,
+    needsAnalysis,
+    isAnalyzing,
     chatMessages,
     isChatLoading,
     isSaving,
     isReverting,
     isDirty,
     initContent,
-    updateContent,
+    applyStructured,
     sendMessage,
     answerGapQuestion,
     saveContent,
     saveAsApplied,
     revertContent,
+    runAnalysis,
     setChatMessages,
-    applyFullResume,
   } = useResumeEditor(selectedJob?.id);
 
   const [loadingResume, setLoadingResume] = useState(true);
@@ -47,6 +49,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
   const [fitToSinglePage, setFitToSinglePage] = useState(true);
   const [exportingPDF] = useState(false);
   const [isConvertingLayout, setIsConvertingLayout] = useState(false);
+  const [uploadPhase, setUploadPhase] = useState<'idle' | 'uploading' | 'analyzing' | 'done'>('idle');
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -85,15 +88,15 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
     const load = async () => {
       setLoadingResume(true);
       try {
-        const [textData, meta] = await Promise.all([
-          getResumeFullText(),
+        const [contentData, meta] = await Promise.all([
+          getResumeContent(),
           getActiveResume(),
         ]);
-        if (!textData) {
+        if (!contentData) {
           setNoResume(true);
           return;
         }
-        initContent(textData.text, meta?.extracted_skills || []);
+        initContent(contentData.structured, meta?.extracted_skills || []);
         setHasPDF(!!meta?.has_pdf);
         setNoResume(false);
       } catch {
@@ -123,7 +126,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
 
   // Debounced auto-save on content change
   useEffect(() => {
-    if (!isDirty || !editorContent) return;
+    if (!isDirty || !canvasStructured) return;
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => {
       handleSave(true);
@@ -131,7 +134,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
     return () => {
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     };
-  }, [editorContent, isDirty, handleSave]);
+  }, [canvasStructured, isDirty, handleSave]);
 
   // ATS calculation is ONLY run when manually triggered by the user
   const runATS = useCallback(async (force = true) => {
@@ -161,18 +164,20 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
     }
   }, [revertContent, setChatMessages]);
 
-  const handleApplyFullResume = useCallback(async (text: string) => {
-    applyFullResume(text);
-    await saveContent(text);
-  }, [applyFullResume, saveContent]);
+  const handleApplyFullResume = useCallback(async (replacement: string | object) => {
+    if (typeof replacement === 'object' && replacement !== null) {
+      applyStructured(replacement as StructuredResume);
+      await saveContent(replacement as StructuredResume);
+    }
+  }, [applyStructured, saveContent]);
 
   const handleConvertToNewLayout = useCallback(async () => {
     setIsConvertingLayout(true);
     try {
       const result = await convertResumeToTemplate(undefined, activeModel, fitToSinglePage);
-      if (result && result.html) {
-        applyFullResume(result.html);
-        await saveContent(result.html);
+      if (result && result.parsed) {
+        applyStructured(result.parsed);
+        await saveContent(result.parsed);
         setActiveSubTab('editor');
         setSaveMessage('Converted to Standard Layout!');
         if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -183,10 +188,11 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
     } finally {
       setIsConvertingLayout(false);
     }
-  }, [activeModel, fitToSinglePage, applyFullResume, saveContent]);
+  }, [activeModel, fitToSinglePage, applyStructured, saveContent]);
 
   const handleExportPDF = () => {
-    const fullHTML = formatResumeTextToHTML(editorContent, fitToSinglePage);
+    if (!canvasStructured) return;
+    const fullHTML = formatResumeTextToHTML(canvasStructured, fitToSinglePage);
 
     const printFrame = document.createElement('iframe');
     printFrame.style.position = 'fixed';
@@ -215,14 +221,15 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
   const handleResumeUploaded = async () => {
     setLoadingResume(true);
     try {
-      const [textData, meta] = await Promise.all([getResumeFullText(), getActiveResume()]);
-      if (textData) {
-        initContent(textData.text, meta?.extracted_skills || []);
+      const [contentData, meta] = await Promise.all([getResumeContent(), getActiveResume()]);
+      if (contentData) {
+        initContent(contentData.structured, meta?.extracted_skills || []);
         setHasPDF(!!meta?.has_pdf);
         setNoResume(false);
       }
     } finally {
       setLoadingResume(false);
+      setUploadPhase('idle');
     }
   };
 
@@ -230,23 +237,31 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setLoadingResume(true);
+    setUploadPhase('uploading');
     try {
+      // Step 1: Upload and wait for backend analysis
+      setUploadPhase('analyzing');
       await uploadResume(file);
       await handleResumeUploaded();
     } catch (err) {
       console.error(err);
       alert('Upload failed: ' + (err instanceof Error ? err.message : String(err)));
-    } finally {
+      setUploadPhase('idle');
       setLoadingResume(false);
+    } finally {
       e.target.value = '';
     }
   };
 
   if (loadingResume) {
     return (
-      <div className="flex items-center justify-center h-full min-h-[400px] gap-3">
+      <div className="flex flex-col items-center justify-center h-full min-h-[400px] gap-3">
         <Loader2 className="w-6 h-6 text-brand-400 animate-spin" />
-        <p className="text-sm text-gray-400">Loading resume...</p>
+        <p className="text-sm text-gray-400">
+          {uploadPhase === 'uploading' ? 'Uploading your resume...' :
+           uploadPhase === 'analyzing' ? 'Analyzing your resume...' :
+           'Loading resume...'}
+        </p>
       </div>
     );
   }
@@ -311,7 +326,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
             <ChatPanel
               messages={chatMessages}
               loading={isChatLoading}
-              onSend={(text) => sendMessage(text, activeModel)}
+              onSend={(text, customJd) => sendMessage(text, activeModel, customJd)}
               onAnswerGap={answerGapQuestion}
               jobTitle={selectedJob?.title}
               activeModel={activeModel}
@@ -325,8 +340,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
         <ResumeCanvasPane
           activeSubTab={activeSubTab}
           fitToSinglePage={fitToSinglePage}
-          editorContent={editorContent}
-          onUpdateContent={updateContent}
+          canvasStructured={canvasStructured}
+          needsAnalysis={needsAnalysis}
+          onAnalyze={runAnalysis}
+          isAnalyzing={isAnalyzing}
           canvasParentRef={canvasParentRef}
           canvasScale={canvasScale}
           hasPDF={hasPDF}
@@ -340,7 +357,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
       <AppliedDialog
         isOpen={showAppliedDialog}
         onClose={() => setShowAppliedDialog(false)}
-        currentText={editorContent}
+        canvasStructured={canvasStructured}
         selectedJob={selectedJob}
         onSaveVersion={saveAsApplied}
         onResumeUploaded={handleResumeUploaded}

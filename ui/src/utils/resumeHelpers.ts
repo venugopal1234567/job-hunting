@@ -76,70 +76,7 @@ export function formatTextWithHighlights(text: string, highlight: boolean, custo
   return escaped;
 }
 
-export interface MatchResult {
-  start: number;
-  end: number;
-}
 
-export const expandToWordBoundaries = (text: string, start: number, end: number): MatchResult => {
-  let newStart = start;
-  let newEnd = end;
-  const isWordChar = (char: string) => /[a-zA-Z0-9_]/.test(char);
-
-  if (start > 0 && isWordChar(text[start]) && isWordChar(text[start - 1])) {
-    while (newStart > 0 && isWordChar(text[newStart - 1])) {
-      newStart--;
-    }
-  }
-
-  if (end < text.length && isWordChar(text[end - 1]) && isWordChar(text[end])) {
-    while (newEnd < text.length && isWordChar(text[end])) {
-      newEnd++;
-    }
-  }
-
-  return { start: newStart, end: newEnd };
-};
-
-export const findFlexibleMatch = (text: string, pattern: string): MatchResult | null => {
-  const normalize = (str: string) => str.replace(/[\s\u200b\u200c\u200d\ufeff]+/g, ' ').trim().toLowerCase();
-  
-  const cleanText = text.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
-  const normPattern = normalize(pattern);
-  if (!normPattern) return null;
-
-  const stripPrefix = (str: string) => str.replace(/^[•\-\*\s]+/, '').trim();
-  const normPatternClean = stripPrefix(normPattern);
-  if (!normPatternClean) return null;
-
-  const words = normPatternClean.split(' ').filter(w => w !== '').map(w => w.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'));
-  if (words.length === 0) return null;
-
-  try {
-    const regexStr = '[•\\-\\*\\s]*' + words.join('[\\s\\r\\n\\W]*');
-    const regex = new RegExp(regexStr, 'i');
-    const match = cleanText.match(regex);
-    if (match && match.index !== undefined) {
-      return expandToWordBoundaries(cleanText, match.index, match.index + match[0].length);
-    }
-  } catch (e) {
-    // Ignore regex errors
-  }
-
-  const cleanPattern = pattern.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
-  const idx = cleanText.indexOf(cleanPattern);
-  if (idx !== -1) {
-    return expandToWordBoundaries(cleanText, idx, idx + cleanPattern.length);
-  }
-
-  const cleanPatternNoPunct = cleanPattern.trim().replace(/[;,.:\s]+$/, '');
-  const idx2 = cleanText.indexOf(cleanPatternNoPunct);
-  if (idx2 !== -1) {
-    return expandToWordBoundaries(cleanText, idx2, idx2 + cleanPatternNoPunct.length);
-  }
-
-  return null;
-};
 
 export const getCleanTextFromDOM = (node: Node): string => {
   if (node.nodeType === Node.TEXT_NODE) {
@@ -153,11 +90,31 @@ export const getCleanTextFromDOM = (node: Node): string => {
     if (el.tagName === 'BR') {
       return '\n';
     }
+
     let text = '';
     for (let i = 0; i < el.childNodes.length; i++) {
       text += getCleanTextFromDOM(el.childNodes[i]);
     }
-    const isBlock = ['P', 'DIV', 'H1', 'H2', 'H3', 'LI'].includes(el.tagName);
+
+    // Preserve bold styling in state plain text as **bold**
+    if (['STRONG', 'B'].includes(el.tagName)) {
+      const trimmed = text.trim();
+      if (trimmed) {
+        return text.replace(trimmed, `**${trimmed}**`);
+      }
+    }
+
+    // Add space between flex-between children (e.g. Job Title and Date/Location)
+    if (el.classList && el.classList.contains('flex-between')) {
+      const childrenText: string[] = [];
+      for (let i = 0; i < el.childNodes.length; i++) {
+        const childVal = getCleanTextFromDOM(el.childNodes[i]).trim();
+        if (childVal) childrenText.push(childVal);
+      }
+      text = childrenText.join(' ');
+    }
+
+    const isBlock = ['P', 'DIV', 'H1', 'H2', 'H3', 'LI', 'TR'].includes(el.tagName);
     if (isBlock && !text.endsWith('\n')) {
       text += '\n';
     }

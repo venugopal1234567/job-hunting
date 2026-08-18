@@ -36,10 +36,16 @@ export const analyzeJob = async (jobId: string, resumeId?: string, force = false
 
 // ─── Resume ────────────────────────────────────────────────────────────────────
 
-export const uploadResume = async (file: File): Promise<Resume> => {
+export const uploadResume = async (file: File): Promise<{
+  message: string;
+  id: string;
+  filename: string;
+  skills: string[];
+  initial_structured: StructuredResume | null;
+}> => {
   const formData = new FormData();
   formData.append('file', file);
-  const { data } = await api.post<Resume>('/resume/upload', formData, {
+  const { data } = await api.post('/resume/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
   return data;
@@ -55,7 +61,11 @@ export const getActiveResume = async (): Promise<Resume | null> => {
   }
 };
 
-export const getResumeFullText = async (): Promise<{ id: string; text: string; has_edits: boolean } | null> => {
+export const getResumeContent = async (): Promise<{
+  structured: StructuredResume | null;
+  has_raw_text: boolean;
+  has_edits: boolean;
+} | null> => {
   try {
     const { data } = await api.get('/resume/active/text');
     return data;
@@ -65,32 +75,39 @@ export const getResumeFullText = async (): Promise<{ id: string; text: string; h
   }
 };
 
-export const saveResumeText = async (
-  text: string,
-  html?: string
+export const saveResumeContent = async (
+  structured: StructuredResume
 ): Promise<{ id: string; skills: string[]; message: string }> => {
-  const payload: Record<string, string> = { text };
-  if (html) payload.html = html;
-  const { data } = await api.put('/resume/active', payload);
+  const { data } = await api.put('/resume/active', { structured });
   return data;
 };
 
-export const revertResumeText = async (): Promise<{ id: string; text: string; skills: string[]; html?: string; parsed?: StructuredResume; message: string }> => {
+export const revertResume = async (): Promise<{
+  structured: StructuredResume;
+  message: string;
+}> => {
   const { data } = await api.post('/resume/revert');
+  return data;
+};
+
+export const analyzeResume = async (): Promise<{ structured: StructuredResume }> => {
+  const { data } = await api.post('/resume/active/analyze');
   return data;
 };
 
 export const chatWithResume = async (
   message: string,
-  resumeText: string,
+  resumeStructured: StructuredResume,
   jobId?: string,
-  model?: string
-): Promise<{ message: string; proposed_edits?: any[]; gap_prompts?: any[]; full_resume_replacement?: string; structured_resume?: StructuredResume; html?: string }> => {
+  model?: string,
+  customJd?: string
+): Promise<{ message: string; proposed_edits?: any[]; gap_prompts?: any[]; structured_resume?: StructuredResume }> => {
   const { data } = await api.post('/resume/chat', {
     message,
-    resume_text: resumeText,
+    resume_structured: resumeStructured,
     job_id: jobId || '',
     model: model || '',
+    custom_jd: customJd || '',
   });
   return data;
 };
@@ -101,8 +118,7 @@ export const getResumeVersions = async () => {
 };
 
 export const saveResumeVersion = async (params: {
-  snapshot_text: string;
-  job_id?: string;
+  snapshot_structured: StructuredResume;
   label: string;
   source: 'editor' | 'upload';
 }) => {
@@ -110,9 +126,9 @@ export const saveResumeVersion = async (params: {
   return data;
 };
 
-export const getVersionText = async (versionId: string): Promise<string> => {
+export const getVersionText = async (versionId: string): Promise<StructuredResume | null> => {
   const { data } = await api.get(`/resume/versions/${versionId}/text`);
-  return data.text;
+  return data.structured;
 };
 
 export const convertResumeToTemplate = async (

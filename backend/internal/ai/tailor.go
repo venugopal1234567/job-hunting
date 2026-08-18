@@ -82,9 +82,6 @@ func (c *Client) ChatWithResume(req *models.ChatRequest, jobContext string, mode
 	resp := parseChatResponse(rawResponse)
 	if resp != nil {
 		resp.ProposedEdits = []models.ProposedEdit{}
-		if resp.StructuredResume != nil {
-			resp.HTML = BuildATSTemplateHTML(resp.StructuredResume, false)
-		}
 	}
 	return resp, nil
 }
@@ -96,7 +93,12 @@ func buildChatPrompt(req *models.ChatRequest, jobContext string) string {
 		jobSection = fmt.Sprintf("\n\nTARGET JOB DESCRIPTION:\n%s", truncate(jobContext, 500000))
 	}
 
-	cleanResumeText := stripHTMLForPrompt(req.ResumeText)
+	var cleanResumeText string
+	if req.ResumeStructured != nil {
+		cleanResumeText = structuredToTextGo(req.ResumeStructured)
+	} else {
+		cleanResumeText = stripHTMLForPrompt(req.ResumeText)
+	}
 
 	return fmt.Sprintf(prompts.ChatResumePromptTemplate,
 		truncate(cleanResumeText, 500000),

@@ -1,36 +1,36 @@
-import { useState, useCallback, useRef } from 'react';
-import { ChatMessage, ProposedEdit, GapQuestionPrompt } from '../types';
-import { chatWithResume, saveResumeText, saveResumeVersion, revertResumeText } from '../services/api';
+import { useState, useCallback } from 'react';
+import { ChatMessage, ProposedEdit, GapQuestionPrompt, StructuredResume } from '../types';
+import { chatWithResume, saveResumeContent, saveResumeVersion, revertResume, analyzeResume } from '../services/api';
 
 let msgCounter = 0;
 const mkId = () => `msg_${++msgCounter}_${Date.now()}`;
 
 export const useResumeEditor = (jobId?: string) => {
-  const [editorContent, setEditorContent] = useState('');
+  const [canvasStructured, setCanvasStructured] = useState<StructuredResume | null>(null);
+  const [needsAnalysis, setNeedsAnalysis] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isReverting, setIsReverting] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [lastSavedSkills, setLastSavedSkills] = useState<string[]>([]);
-  const editorRef = useRef<HTMLTextAreaElement>(null);
-  const lastAIHTMLRef = useRef<string>('');
 
-  const initContent = useCallback((text: string, skills: string[]) => {
-    const cleanText = text.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
-    setEditorContent(cleanText);
+  const initContent = useCallback((sr: StructuredResume | null, skills: string[]) => {
+    setCanvasStructured(sr);
+    setNeedsAnalysis(sr === null);
     setLastSavedSkills(skills);
     setIsDirty(false);
   }, []);
 
-  const updateContent = useCallback((text: string) => {
-    setEditorContent(text);
+  const applyStructured = useCallback((sr: StructuredResume) => {
+    setCanvasStructured(sr);
     setIsDirty(true);
   }, []);
 
   // Send a chat message to the AI
-  const sendMessage = useCallback(async (userText: string, model?: string) => {
-    if (!userText.trim() || isChatLoading) return;
+  const sendMessage = useCallback(async (userText: string, model?: string, customJd?: string) => {
+    if (!userText.trim() || isChatLoading || !canvasStructured) return;
 
     const userMsg: ChatMessage = {
       id: mkId(),
@@ -38,21 +38,11 @@ export const useResumeEditor = (jobId?: string) => {
       content: userText,
       timestamp: Date.now(),
     };
-    setChatMessages([userMsg]);
+    setChatMessages(prev => [...prev, userMsg]);
     setIsChatLoading(true);
 
     try {
-      const response = await chatWithResume(userText, editorContent, jobId, model);
-
-      if (response.html) {
-        lastAIHTMLRef.current = response.html;
-        setEditorContent(response.html);
-        setIsDirty(true);
-      } else if (response.full_resume_replacement) {
-        const cleanText = response.full_resume_replacement.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
-        setEditorContent(cleanText);
-        setIsDirty(true);
-      }
+      const response = await chatWithResume(userText, canvasStructured, jobId, model, customJd);
 
       const aiMsg: ChatMessage = {
         id: mkId(),
@@ -60,9 +50,7 @@ export const useResumeEditor = (jobId?: string) => {
         content: response.message,
         proposedEdits: response.proposed_edits?.map((e: ProposedEdit) => ({ ...e })),
         gapPrompts: response.gap_prompts?.map((g: GapQuestionPrompt) => ({ ...g })),
-        fullResumeReplacement: response.html || response.full_resume_replacement,
         structuredResume: response.structured_resume,
-        html: response.html,
         timestamp: Date.now(),
       };
       setChatMessages(prev => [...prev, aiMsg]);
@@ -77,7 +65,7 @@ export const useResumeEditor = (jobId?: string) => {
     } finally {
       setIsChatLoading(false);
     }
-  }, [editorContent, isChatLoading, jobId]);
+  }, [canvasStructured, isChatLoading, jobId]);
 
   // Answer a gap question — feed the answer back as a message
   const answerGapQuestion = useCallback((skill: string, answer: 'yes' | 'no' | string) => {
@@ -90,25 +78,22 @@ export const useResumeEditor = (jobId?: string) => {
   }, [sendMessage]);
 
   // Auto-save editor content to backend
-  const saveContent = useCallback(async (textOverride?: string) => {
-    const textToSave = textOverride !== undefined ? textOverride : editorContent;
-    if (!textToSave.trim() || isSaving) return null;
+  const saveContent = useCallback(async (structuredOverride?: StructuredResume) => {
+    const structToSave = structuredOverride || canvasStructured;
+    if (!structToSave || isSaving) return null;
     setIsSaving(true);
-    const htmlToSave = lastAIHTMLRef.current || undefined;
-    lastAIHTMLRef.current = '';
     try {
-      const result = await saveResumeText(textToSave, htmlToSave);
+      const result = await saveResumeContent(structToSave);
       setLastSavedSkills(result.skills);
       setIsDirty(false);
       return result;
     } catch (err) {
-      if (htmlToSave) lastAIHTMLRef.current = htmlToSave;
       console.error('Save failed:', err);
       return null;
     } finally {
       setIsSaving(false);
     }
-  }, [editorContent, isSaving]);
+  }, [canvasStructured, isSaving]);
 
   // Save an "applied" version snapshot
   const saveAsApplied = useCallback(async (params: {
@@ -116,23 +101,22 @@ export const useResumeEditor = (jobId?: string) => {
     label: string;
     source: 'editor' | 'upload';
   }) => {
+    if (!canvasStructured) return;
     await saveContent();
     return saveResumeVersion({
-      snapshot_text: editorContent,
-      job_id: params.jobId,
+      snapshot_structured: canvasStructured,
       label: params.label,
       source: params.source,
     });
-  }, [editorContent, saveContent]);
+  }, [canvasStructured, saveContent]);
 
   // Revert edited text back to original
   const revertContent = useCallback(async () => {
     setIsReverting(true);
     try {
-      const result = await revertResumeText();
-      const textToUse = result.html || result.text;
-      setEditorContent(textToUse);
-      setLastSavedSkills(result.skills);
+      const result = await revertResume();
+      setCanvasStructured(result.structured);
+      setNeedsAnalysis(result.structured === null);
       setIsDirty(false);
       return result;
     } catch (err) {
@@ -143,17 +127,24 @@ export const useResumeEditor = (jobId?: string) => {
     }
   }, []);
 
-  // Apply complete resume replacement
-  const applyFullResume = useCallback((text: string) => {
-    if (!text) return;
-    const cleanText = text.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
-    setEditorContent(cleanText);
-    setIsDirty(true);
+  const runAnalysis = useCallback(async () => {
+    setIsAnalyzing(true);
+    try {
+      const result = await analyzeResume();
+      setCanvasStructured(result.structured);
+      setNeedsAnalysis(false);
+    } catch (err) {
+      console.error('Manual structuring failed:', err);
+      alert('AI structuring failed to generate: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setIsAnalyzing(false);
+    }
   }, []);
 
   return {
-    editorContent,
-    editorRef,
+    canvasStructured,
+    needsAnalysis,
+    isAnalyzing,
     chatMessages,
     isChatLoading,
     isSaving,
@@ -161,13 +152,13 @@ export const useResumeEditor = (jobId?: string) => {
     isDirty,
     lastSavedSkills,
     initContent,
-    updateContent,
+    applyStructured,
     sendMessage,
     answerGapQuestion,
     saveContent,
     saveAsApplied,
     revertContent,
-    applyFullResume,
+    runAnalysis,
     setChatMessages,
   };
 };

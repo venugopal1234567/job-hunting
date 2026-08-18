@@ -28,9 +28,10 @@ export const useResume = () => {
     setUploading(true);
     setError(null);
     try {
-      const newResume = await uploadResume(file);
-      setResume(newResume);
-      return newResume;
+      const newResumeData = await uploadResume(file);
+      const activeRes = await getActiveResume();
+      setResume(activeRes);
+      return activeRes;
     } catch (err: any) {
       setError(err.response?.data?.error || err.message || 'Upload failed');
       throw err;

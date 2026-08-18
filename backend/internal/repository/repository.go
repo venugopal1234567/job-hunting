@@ -32,6 +32,10 @@ type ResumeRepository interface {
 	GetVersions(ctx context.Context, resumeID string) ([]models.ResumeVersion, error)
 	SaveVersion(ctx context.Context, version *models.ResumeVersion) error
 	GetVersionByID(ctx context.Context, versionID string) (*models.ResumeVersion, error)
+	GetResumeContent(ctx context.Context) (*models.StructuredResume, error)
+	UpdateResumeStructured(ctx context.Context, sr *models.StructuredResume) error
+	SetInitialStructured(ctx context.Context, sr *models.StructuredResume) error
+	RevertResume(ctx context.Context) (*models.StructuredResume, error)
 }
 
 // SettingsRepository handles data operations for app settings and AI configs

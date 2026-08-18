@@ -98,17 +98,17 @@ export const ResumeEditorHeader: React.FC<ResumeEditorHeaderProps> = ({
           {/* Revert button (converts original resume text into standard 1-page layout) */}
           <button
             id="btn-revert-resume"
-            onClick={onConvertToNewLayout || onRevert}
+            onClick={onRevert}
             disabled={isSaving || isReverting || isConvertingLayout}
             className="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/20 text-xs font-medium flex items-center gap-1.5 disabled:opacity-40 transition-all"
             title="Revert all edits back to original resume text formatted in standard 1-page layout"
           >
-            {isReverting || isConvertingLayout ? (
+          {isReverting || isConvertingLayout ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-300" />
             ) : (
               <RotateCcw className="w-3.5 h-3.5" />
             )}
-            {isReverting || isConvertingLayout ? 'Reverting...' : 'Revert/get original page'}
+            {isReverting ? 'Reverting...' : isConvertingLayout ? 'Converting Layout...' : 'Revert/get original page'}
           </button>
 
           {/* Export to PDF */}

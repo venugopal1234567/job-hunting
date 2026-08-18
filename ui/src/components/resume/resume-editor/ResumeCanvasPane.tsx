@@ -1,13 +1,15 @@
-import React, { RefObject } from 'react';
+import React, { RefObject, useEffect, useRef } from 'react';
 import { FileText, Loader2, Sparkles } from 'lucide-react';
-import { renderEditorCanvasHTML } from '../../../utils/resumeRenderer';
-import { getCleanTextFromDOM } from '../../../utils/resumeHelpers';
+import { renderFromStructured } from '../../../utils/resumeRenderer';
+import { StructuredResume } from '../../../types';
 
 interface ResumeCanvasPaneProps {
   activeSubTab: 'editor' | 'pdf';
   fitToSinglePage: boolean;
-  editorContent: string;
-  onUpdateContent: (content: string) => void;
+  canvasStructured: StructuredResume | null;
+  needsAnalysis: boolean;
+  onAnalyze: () => void;
+  isAnalyzing: boolean;
   canvasParentRef: RefObject<HTMLDivElement>;
   canvasScale: number;
   hasPDF: boolean;
@@ -19,8 +21,10 @@ interface ResumeCanvasPaneProps {
 export const ResumeCanvasPane: React.FC<ResumeCanvasPaneProps> = ({
   activeSubTab,
   fitToSinglePage,
-  editorContent,
-  onUpdateContent,
+  canvasStructured,
+  needsAnalysis,
+  onAnalyze,
+  isAnalyzing,
   canvasParentRef,
   canvasScale,
   hasPDF,
@@ -28,6 +32,25 @@ export const ResumeCanvasPane: React.FC<ResumeCanvasPaneProps> = ({
   onConvertToNewLayout,
   isConvertingLayout = false,
 }) => {
+  const canvasRef = useRef<HTMLDivElement>(null);
+
+  // Track the last (content + fitToSinglePage) pair we rendered
+  const lastRenderedKey = useRef<string>('');
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !canvasStructured) return;
+
+    const newKey = `${JSON.stringify(canvasStructured)}::${fitToSinglePage}`;
+    if (newKey === lastRenderedKey.current) return; // skip if nothing changed
+    lastRenderedKey.current = newKey;
+
+    canvas.innerHTML = renderFromStructured(canvasStructured, fitToSinglePage);
+  }, [canvasStructured, fitToSinglePage]);
+
+  // Compute character length safely
+  const charLength = canvasStructured ? JSON.stringify(canvasStructured).length : 0;
+
   return (
     <div className="min-w-0 h-full flex flex-col glass rounded-xl border border-white/10 overflow-hidden resume-editor-pane shadow-2xl relative">
       {/* Canvas Sub-Header */}
@@ -61,42 +84,53 @@ export const ResumeCanvasPane: React.FC<ResumeCanvasPaneProps> = ({
             </button>
           )}
           <span className="text-xs font-mono text-gray-400">
-            {editorContent.length.toLocaleString()} characters
+            {charLength.toLocaleString()} characters
           </span>
         </div>
       </div>
 
       {/* Printable Canvas & PDF Viewing Area */}
-      <div 
+      <div
         ref={canvasParentRef}
         className={`flex-1 overflow-y-auto overflow-x-hidden print-area bg-[#0b0f19] p-4 lg:p-6 flex justify-center ${activeSubTab === 'pdf' ? 'flex flex-col' : 'items-start'} relative`}
       >
         {activeSubTab === 'editor' ? (
-          <div 
-            id="resume-editor-canvas"
-            contentEditable
-            suppressContentEditableWarning
-            onBlur={(e) => {
-              const newText = getCleanTextFromDOM(e.currentTarget);
-              if (newText !== editorContent) {
-                onUpdateContent(newText);
-              }
-            }}
-            dangerouslySetInnerHTML={{ 
-              __html: renderEditorCanvasHTML(editorContent, fitToSinglePage) 
-            }}
-            className={`editor-textarea bg-white text-slate-800 shadow-2xl rounded-sm mx-auto flex-shrink-0 ${fitToSinglePage ? 'fit-page' : ''}`}
-            style={{
-              width: '8.5in',
-              minHeight: '11in',
-              transform: `scale(${canvasScale})`,
-              transformOrigin: 'top center',
-              marginBottom: canvasScale < 1 ? `calc((1 - ${canvasScale}) * -11in)` : '0px',
-              outline: 'none',
-              boxSizing: 'border-box'
-            }}
-            spellCheck
-          />
+          needsAnalysis ? (
+            <div className="flex flex-col items-center justify-center h-full gap-4 text-center max-w-sm mx-auto">
+              <FileText className="w-12 h-12 text-gray-500" />
+              <h4 className="text-sm font-semibold text-white">Resume Could Not Be Structured Automatically</h4>
+              <p className="text-xs text-gray-400 leading-relaxed">
+                We've stored your raw resume text safely. Click the button below to retry generating a structured visual layout with AI.
+              </p>
+              <button
+                onClick={onAnalyze}
+                disabled={isAnalyzing}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-md transition-all"
+              >
+                {isAnalyzing ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Sparkles className="w-4 h-4 text-yellow-300" />
+                )}
+                {isAnalyzing ? 'Analyzing Resume...' : 'Generate Structure'}
+              </button>
+            </div>
+          ) : (
+            <div
+              ref={canvasRef}
+              id="resume-editor-canvas"
+              className={`editor-textarea bg-white text-slate-800 shadow-2xl rounded-sm mx-auto flex-shrink-0 ${fitToSinglePage ? 'fit-page' : ''}`}
+              style={{
+                width: '8.5in',
+                minHeight: '11in',
+                transform: `scale(${canvasScale})`,
+                transformOrigin: 'top center',
+                marginBottom: canvasScale < 1 ? `calc((1 - ${canvasScale}) * -11in)` : '0px',
+                outline: 'none',
+                boxSizing: 'border-box',
+              }}
+            />
+          )
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center p-2">
             {hasPDF ? (
@@ -107,7 +141,7 @@ export const ResumeCanvasPane: React.FC<ResumeCanvasPaneProps> = ({
                   width: '100%',
                   height: '100%',
                   minHeight: '500px',
-                  objectFit: 'contain'
+                  objectFit: 'contain',
                 }}
                 title="Original PDF Resume"
               />

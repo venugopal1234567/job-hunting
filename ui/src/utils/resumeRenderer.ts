@@ -1,4 +1,4 @@
-import { parseResumeStructure } from './resumeParser';
+import { StructuredResume } from '../types';
 import {
   escapeHTML,
   getContactIconSVG,
@@ -7,17 +7,54 @@ import {
   renderFormattedText
 } from './resumeHelpers';
 
-export const generatePrintHTML = (text: string, fitToPage: boolean = false): string => {
-  if (!text) return '';
+// Helper to highlight keywords in bullet points using simple substring matching (no regex)
+export function highlightKeywordsInText(text: string, keywords: string[]): string {
+  if (!keywords || keywords.length === 0 || !text) {
+    return text;
+  }
+  let result = text;
+  // Sort keywords by length descending to avoid replacing substrings of keywords first
+  const sortedKws = [...keywords].sort((a, b) => b.length - a.length);
 
-  const parsed = parseResumeStructure(text);
+  for (const kw of sortedKws) {
+    if (!kw || kw.trim().length < 2) continue;
+    const cleanKw = kw.trim();
+    // Case-insensitive replacement using indexOf/slice
+    let searchIdx = 0;
+    while (searchIdx < result.length) {
+      const idx = result.toLowerCase().indexOf(cleanKw.toLowerCase(), searchIdx);
+      if (idx === -1) break;
+
+      // Ensure word boundaries or not inside already highlighted tag
+      const beforeChar = idx > 0 ? result[idx - 1] : '';
+      const afterChar = idx + cleanKw.length < result.length ? result[idx + cleanKw.length] : '';
+
+      const isWordChar = /[a-zA-Z0-9]/.test(beforeChar) || /[a-zA-Z0-9]/.test(afterChar);
+      const isAlreadyHighlighted = result.substring(Math.max(0, idx - 8), idx).includes('<strong>') || result.substring(Math.max(0, idx - 30), idx).includes('<span');
+
+      if (!isWordChar && !isAlreadyHighlighted) {
+        const actualMatch = result.substring(idx, idx + cleanKw.length);
+        const replacement = `<strong>${actualMatch}</strong>`;
+        result = result.substring(0, idx) + replacement + result.substring(idx + cleanKw.length);
+        searchIdx = idx + replacement.length;
+      } else {
+        searchIdx = idx + 1;
+      }
+    }
+  }
+  return result;
+}
+
+export function renderFromStructured(sr: StructuredResume, fitToPage = false): string {
+  if (!sr) return '';
+  const keywords = sr.highlight_keywords || [];
 
   let bodyHtml = `
     <header>
-        <h1>${escapeHTML(parsed.name || 'VENUGOPAL HEGDE')}</h1>
-        ${parsed.title ? `<div class="subtitle"><em>${escapeHTML(parsed.title)}</em></div>` : ''}
+        <h1>${escapeHTML(sr.name || 'VENUGOPAL HEGDE')}</h1>
+        ${sr.title ? `<div class="subtitle"><em>${escapeHTML(sr.title)}</em></div>` : ''}
         <div class="contact-info">
-            ${parsed.contactItems.map(item => `
+            ${(sr.contact_items || []).map(item => `
                 <span>
                     ${getContactIconSVG(item)}
                     ${escapeHTML(item)}
@@ -27,36 +64,46 @@ export const generatePrintHTML = (text: string, fitToPage: boolean = false): str
     </header>
   `;
 
-  if (parsed.summary) {
+  if (sr.summary) {
+    const summaryHighlighted = highlightKeywordsInText(sr.summary, keywords);
     bodyHtml += `
     <section>
         <h2>PROFESSIONAL SUMMARY</h2>
-        <p>${renderFormattedText(parsed.summary)}</p>
+        <p>${renderFormattedText(summaryHighlighted)}</p>
     </section>`;
   }
 
-  if (parsed.skills.length > 0) {
+  if (sr.skills && sr.skills.length > 0) {
     bodyHtml += `
     <section>
         <h2>SKILLS</h2>
         <table class="skills-table">
-            ${parsed.skills.map(skill => {
+            ${sr.skills.map(skill => {
               const cat = skill.category.replace(/:$/, '').trim();
+              const itemsHighlighted = highlightKeywordsInText(skill.items, keywords);
               return `
               <tr>
                   <td><strong>${renderFormattedText(cat)} :</strong></td>
-                  <td>${renderFormattedText(skill.items)}</td>
+                  <td>${renderFormattedText(itemsHighlighted)}</td>
               </tr>`;
             }).join('')}
         </table>
     </section>`;
   }
 
-  if (parsed.workExperience.length > 0) {
+  if (sr.work_experience && sr.work_experience.length > 0) {
     bodyHtml += `
     <section>
         <h2>WORK EXPERIENCE</h2>
-        ${parsed.workExperience.map(job => `
+        ${sr.work_experience.map(job => {
+          const bulletsHtml = (job.bullets || []).map(b => {
+            const highlightedBullet = highlightKeywordsInText(b, keywords);
+            return `<li>${formatBulletActionVerb(highlightedBullet)}</li>`;
+          }).join('');
+
+          const techStackHighlighted = job.tech_stack ? highlightKeywordsInText(job.tech_stack, keywords) : '';
+
+          return `
             <div class="job-title-container flex-between">
                 <div class="job-title">${formatJobTitleLine(job.title)}</div>
                 <div class="job-date">${escapeHTML(job.date)}</div>
@@ -67,18 +114,19 @@ export const generatePrintHTML = (text: string, fitToPage: boolean = false): str
                 <div class="job-location"><em>${renderFormattedText(job.location)}</em></div>
             </div>` : ''}
             <ul>
-                ${job.bullets.map(b => `<li>${formatBulletActionVerb(b)}</li>`).join('')}
+                ${bulletsHtml}
             </ul>
-            ${job.techStack ? `<div class="tech-used"><em>Technologies / Skills Used : ${renderFormattedText(job.techStack)}</em></div>` : ''}
-        `).join('')}
+            ${job.tech_stack ? `<div class="tech-used"><em>Technologies / Skills Used : ${renderFormattedText(techStackHighlighted)}</em></div>` : ''}
+          `;
+        }).join('')}
     </section>`;
   }
 
-  if (parsed.education.length > 0) {
+  if (sr.education && sr.education.length > 0) {
     bodyHtml += `
     <section>
         <h2>EDUCATION</h2>
-        ${parsed.education.map(edu => `
+        ${sr.education.map(edu => `
             <div class="flex-between" style="font-size: ${fitToPage ? '13.5px' : '14.5px'}; font-family: 'Times New Roman', Times, serif;">
                 <div><strong>${renderFormattedText(edu.institution)}</strong></div>
                 <div>${escapeHTML(edu.date)}</div>
@@ -88,20 +136,19 @@ export const generatePrintHTML = (text: string, fitToPage: boolean = false): str
     </section>`;
   }
 
-  parsed.customSections.forEach(sec => {
-    bodyHtml += `
-    <section>
-        <h2>${escapeHTML(sec.title)}</h2>
-        ${sec.content.map(c => `<p>${renderFormattedText(c)}</p>`).join('')}
-    </section>`;
-  });
+  return bodyHtml;
+}
+
+export const generatePrintHTMLFromStructured = (sr: StructuredResume, fitToPage = false): string => {
+  if (!sr) return '';
+  const bodyHtml = renderFromStructured(sr, fitToPage);
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${escapeHTML(parsed.name || 'Resume')}</title>
+    <title>${escapeHTML(sr.name || 'Resume')}</title>
     <style>
         @page {
             size: letter;
@@ -307,23 +354,9 @@ ${bodyHtml}
 </html>`;
 };
 
-export const renderEditorCanvasHTML = (text: string, fitToPage: boolean = false): string => {
-  if (!text) return '';
-  if (text.includes('<header>') || text.includes('<section>') || text.includes('skills-table') || text.includes('<!DOCTYPE html>')) {
-    const match = text.match(/<body>([\s\S]*)<\/body>/i);
-    return match ? match[1] : text;
-  }
-  const full = generatePrintHTML(text, fitToPage);
-  const match = full.match(/<body>([\s\S]*)<\/body>/i);
-  return match ? match[1] : full;
-};
-
-export const formatResumeTextToHTML = (text: string, fitToPage: boolean = false): string => {
-  if (!text) return '';
-  let fullDoc = text;
-  if (!text.includes('<!DOCTYPE html>') && !text.includes('<html')) {
-    fullDoc = generatePrintHTML(text, fitToPage);
-  }
+export const formatResumeTextToHTML = (sr: StructuredResume, fitToPage = false): string => {
+  if (!sr) return '';
+  const fullDoc = generatePrintHTMLFromStructured(sr, fitToPage);
 
   const printOverrideCSS = `<style id="print-fit-override">
 @media print {

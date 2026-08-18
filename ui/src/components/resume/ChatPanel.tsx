@@ -1,7 +1,8 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
   Send, Loader2, Bot, User, Check, X, HelpCircle,
-  Sparkles, ChevronDown, ChevronUp, RefreshCw, AlertCircle, Cpu
+  Sparkles, ChevronDown, ChevronUp, RefreshCw, AlertCircle, Cpu,
+  FileText, MessageSquare
 } from 'lucide-react';
 import { ChatMessage, TrackedChange } from '../../types';
 import { getAISettings, NvidiaModel } from '../../services/api';
@@ -9,12 +10,12 @@ import { getAISettings, NvidiaModel } from '../../services/api';
 interface ChatPanelProps {
   messages: ChatMessage[];
   loading: boolean;
-  onSend: (text: string) => void;
+  onSend: (text: string, customJd?: string) => void;
   onAnswerGap: (skill: string, answer: 'yes' | 'no' | string) => void;
   jobTitle?: string;
   activeModel?: string;
   onModelChange?: (model: string) => void;
-  onApplyFullResume?: (text: string) => void;
+  onApplyFullResume?: (text: string | object) => void;
 }
 
 const ChatPanel: React.FC<ChatPanelProps> = ({
@@ -28,6 +29,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
 }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [expandedEdits, setExpandedEdits] = useState<Record<string, boolean>>({});
+  
+  // Custom command input state (no chat history maintained)
+  const [customCommand, setCustomCommand] = useState('');
+
+  // Custom JD toggle and text state
+  const [customJdEnabled, setCustomJdEnabled] = useState(true);
+  const [customJdText, setCustomJdText] = useState('');
   
   // Track wizard answers
   const [answers, setAnswers] = useState<Record<string, { answered: boolean; hasSkill: boolean; details: string }>>({});
@@ -55,7 +63,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   }, [onModelChange]);
 
   const shortModelName = (name: string) => {
-    // Show just the last segment after / and drop the tag if it's 'latest'
     const base = name.split('/').pop() || name;
     const [id, tag] = base.split(':');
     return tag && tag !== 'latest' ? `${id}:${tag}` : id;
@@ -65,8 +72,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
-  const toggleExpand = (id: string) =>
-    setExpandedEdits(prev => ({ ...prev, [id]: !prev[id] }));
+  // Handle submitting a custom command (feature 1 & 2)
+  const handleCustomCommandSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!customCommand.trim() || loading) return;
+
+    const jdContext = customJdEnabled && customJdText.trim() ? customJdText.trim() : undefined;
+    onSend(customCommand.trim(), jdContext);
+    setCustomCommand('');
+  };
 
   // Find the latest assistant message
   const assistantMessages = messages.filter(m => m.role === 'assistant');
@@ -90,13 +104,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     });
     
     responseText += "\nPlease refine my resume and generate the improved section suggestions based on these inputs.";
-    onSend(responseText);
+    const jdContext = customJdEnabled && customJdText.trim() ? customJdText.trim() : undefined;
+    onSend(responseText, jdContext);
     setAnswers({});
   };
 
   const handleRestart = () => {
     setAnswers({});
-    onSend("Improve ATS score");
+    const jdContext = customJdEnabled && customJdText.trim() ? customJdText.trim() : undefined;
+    onSend("Improve ATS score", jdContext);
   };
 
   return (
@@ -109,9 +125,14 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-white">AI Resume Coach</p>
-            {jobTitle && (
+            {jobTitle && !customJdEnabled && (
               <p className="text-[10px] text-gray-500 truncate">
                 Tailoring for: {jobTitle}
+              </p>
+            )}
+            {customJdEnabled && (
+              <p className="text-[10px] text-emerald-400 font-medium truncate flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Custom JD Enabled
               </p>
             )}
           </div>
@@ -168,21 +189,24 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
         </div>
       </div>
 
-      {/* Messages / Wizard Container */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+      {/* Widget 1: AI Resume Coach (Scanner & Wizard Feedback) */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-4">
         {/* Empty State / Initial Trigger */}
         {messages.length === 0 && !loading && (
-          <div className="flex flex-col items-center justify-center h-full text-center py-10 gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center">
+          <div className="flex flex-col items-center justify-center min-h-[160px] text-center py-4 gap-3 my-auto">
+            <div className="w-12 h-12 rounded-2xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center mb-1">
               <Sparkles className="w-6 h-6 text-brand-400" />
             </div>
-            <p className="text-sm font-medium text-white">Tailor Your Resume</p>
-            <p className="text-xs text-gray-500 max-w-[240px]">
-              Let AI scan your resume against the target job description and suggest improvements to boost your ATS match.
+            <p className="text-sm font-bold text-white">Tailor Your Resume</p>
+            <p className="text-xs text-gray-400 max-w-[280px] leading-relaxed">
+              Auto-scan your active resume against job requirements to calculate ATS score and fill key skill gaps.
             </p>
             <button
-              onClick={() => onSend("Improve ATS score")}
-              className="mt-2 w-full py-2.5 px-4 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold shadow-lg hover:shadow-brand-500/20 transition-all flex items-center justify-center gap-2"
+              onClick={() => {
+                const jdContext = customJdEnabled && customJdText.trim() ? customJdText.trim() : undefined;
+                onSend("Improve ATS score", jdContext);
+              }}
+              className="mt-2 w-full max-w-[280px] py-2.5 px-4 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold shadow-lg hover:shadow-brand-500/20 transition-all flex items-center justify-center gap-2"
             >
               <Sparkles className="w-4 h-4" />
               Improve ATS Score
@@ -218,27 +242,36 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
         )}
 
         {/* Tailored Result Action Card */}
-        {latestMessage?.fullResumeReplacement && !loading && (
+        {latestMessage?.structuredResume && !loading && (
           <div className="rounded-xl border border-brand-500/30 bg-brand-500/5 p-3.5 text-xs space-y-3">
             <div className="flex items-start gap-2">
               <Sparkles className="w-4 h-4 text-brand-400 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="font-semibold text-white">Resume Auto-Updated & Tailored</p>
+                <p className="font-semibold text-white">AI Suggestion Ready</p>
                 <p className="text-gray-400 text-[11px] mt-0.5 leading-relaxed">
-                  Your resume has been updated on the editor canvas with optimal ATS formatting.
+                  Review the feedback above. Click below if you wish to apply these suggested changes to your Visual Canvas.
                 </p>
               </div>
             </div>
 
-            <button
-              onClick={() => {
-                handleRestart();
-                onSend("Improve ATS score");
-              }}
-              className="w-full py-2 px-3 rounded-lg bg-surface-300 hover:bg-surface-400 text-gray-200 hover:text-white border border-white/10 font-semibold transition-all flex items-center justify-center gap-2"
-            >
-              <RefreshCw className="w-3.5 h-3.5 text-brand-400" /> Re-Check / Re-Tailor Again
-            </button>
+            <div className="flex gap-2">
+              {onApplyFullResume && (
+                <button
+                  onClick={() => onApplyFullResume(latestMessage.structuredResume!)}
+                  className="flex-1 py-2 px-3 rounded-lg bg-brand-600 hover:bg-brand-500 text-white font-semibold shadow-md transition-all flex items-center justify-center gap-1.5"
+                >
+                  <Check className="w-3.5 h-3.5 text-emerald-300" /> Apply to Canvas
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  handleRestart();
+                }}
+                className="py-2 px-3 rounded-lg bg-surface-300 hover:bg-surface-400 text-gray-200 hover:text-white border border-white/10 font-semibold transition-all flex items-center justify-center gap-1.5"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-brand-400" /> Re-Check
+              </button>
+            </div>
           </div>
         )}
 
@@ -352,6 +385,84 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
         )}
 
         <div ref={bottomRef} />
+      </div>
+
+      {/* Widget 2: Custom Job Description Context Widget */}
+      <div className="flex-shrink-0 mx-3 mb-2 rounded-xl border border-white/10 bg-surface-200/90 p-3 shadow-md">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FileText className="w-3.5 h-3.5 text-indigo-400" />
+            <span className="text-xs font-semibold text-white">Custom Job Description Context</span>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              id="toggle-custom-jd"
+              checked={customJdEnabled}
+              onChange={(e) => setCustomJdEnabled(e.target.checked)}
+              className="sr-only peer"
+            />
+            <div className="w-8 h-4 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-600"></div>
+          </label>
+        </div>
+
+        {customJdEnabled && (
+          <div className="mt-2.5 animate-fade-in space-y-1.5">
+            <textarea
+              id="custom-jd-input"
+              value={customJdText}
+              onChange={(e) => setCustomJdText(e.target.value)}
+              placeholder="Paste custom job description or requirements context here..."
+              rows={2}
+              className="w-full bg-surface-300 border border-white/10 rounded-lg p-2 text-xs text-gray-200 outline-none focus:border-indigo-500/60 placeholder:text-gray-500 resize-none font-mono"
+            />
+            <p className="text-[10px] text-gray-400">
+              💡 When enabled, custom JD context will be passed to AI for custom commands and ATS checks.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Widget 3: Ask AI Custom Command Widget */}
+      <div className="flex-shrink-0 mx-3 mb-3 rounded-xl border border-white/10 bg-surface-200/90 p-3 shadow-md">
+        <div className="flex items-center gap-2 mb-2">
+          <MessageSquare className="w-3.5 h-3.5 text-brand-400" />
+          <span className="text-xs font-semibold text-white">Ask AI</span>
+        </div>
+        <form onSubmit={handleCustomCommandSubmit} className="flex gap-2">
+          <div className="relative flex-1">
+            <input
+              type="text"
+              id="custom-command-input"
+              value={customCommand}
+              onChange={(e) => setCustomCommand(e.target.value)}
+              placeholder="e.g. Add TypeScript to skills, expand career summary..."
+              disabled={loading}
+              className="w-full bg-surface-300 border border-white/10 rounded-lg pl-3 pr-8 py-2 text-xs text-white placeholder-gray-500 outline-none focus:border-brand-500/50 transition-all disabled:opacity-50"
+            />
+            {customCommand && (
+              <button
+                type="button"
+                onClick={() => setCustomCommand('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <button
+            type="submit"
+            id="btn-send-custom-command"
+            disabled={!customCommand.trim() || loading}
+            className="px-3 py-2 bg-brand-600 hover:bg-brand-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shadow-md shadow-brand-500/20 flex-shrink-0"
+          >
+            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+            Ask AI
+          </button>
+        </form>
+        <p className="text-[10px] text-gray-500 mt-1.5 px-0.5">
+          Ask AI to update any section or skill. Result directly applies to canvas.
+        </p>
       </div>
     </div>
   );

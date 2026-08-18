@@ -41,6 +41,7 @@ func SetupRouter(h *Handler) *gin.Engine {
 			res.GET("/active/pdf", h.GetActiveResumePDF)
 			res.PUT("/active", h.UpdateResumeText)
 			res.POST("/revert", h.RevertResumeText)
+			res.POST("/active/analyze", h.AnalyzeResume)
 			res.POST("/chat", h.ChatResume)
 			res.GET("/versions", h.GetResumeVersions)
 			res.POST("/versions", h.SaveResumeVersion)

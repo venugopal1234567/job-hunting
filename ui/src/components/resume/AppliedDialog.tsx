@@ -3,13 +3,13 @@ import {
   Save, Upload, Clock, CheckCircle2, X, Briefcase,
   AlertTriangle, FileUp
 } from 'lucide-react';
-import { Job } from '../../types';
+import { Job, StructuredResume } from '../../types';
 import { uploadResume, saveResumeVersion } from '../../services/api';
 
 interface AppliedDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  currentText: string;
+  canvasStructured: StructuredResume | null;
   selectedJob?: Job | null;
   onSaveVersion: (params: { jobId?: string; label: string; source: 'editor' | 'upload' }) => Promise<void>;
   onResumeUploaded?: () => void;
@@ -18,7 +18,7 @@ interface AppliedDialogProps {
 const AppliedDialog: React.FC<AppliedDialogProps> = ({
   isOpen,
   onClose,
-  currentText,
+  canvasStructured,
   selectedJob,
   onSaveVersion,
   onResumeUploaded,
@@ -50,14 +50,14 @@ const AppliedDialog: React.FC<AppliedDialogProps> = ({
   };
 
   const handleUploadApplied = async (file: File) => {
+    if (!canvasStructured) return;
     setUploading(true);
     try {
       // Upload as new active resume
       await uploadResume(file);
       // Then save a version snapshot for that file
       await saveResumeVersion({
-        snapshot_text: currentText,
-        job_id: selectedJob?.id,
+        snapshot_structured: canvasStructured,
         label: `${file.name} – applied to ${selectedJob?.title || 'job'}`,
         source: 'upload',
       });
