@@ -19,7 +19,7 @@ export function escapeHTML(str: string): string {
 
 export function formatBulletActionVerb(str: string): string {
   if (!str) return '';
-  let s = str.replace(/^[•\-▪◦\s]+/, '').trim();
+  let s = str.replace(/^[•\-▪◦\s]+/, '').replace(/^\*\s+/, '').trim();
   s = escapeHTML(s);
 
   // Convert markdown **keyword** or <strong>keyword</strong> coming from AI into bold HTML tags
@@ -43,7 +43,7 @@ export function formatJobTitleLine(title: string): string {
 
 export function renderFormattedText(str: string): string {
   if (!str) return '';
-  let s = str.replace(/^[•\-*▪◦\s]+/, '').trim();
+  let s = str.replace(/^[•\-▪◦\s]+/, '').replace(/^\*\s+/, '').trim();
   s = escapeHTML(s);
   s = s.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
   s = s.replace(/&lt;strong&gt;(.*?)&lt;\/strong&gt;/gi, '<strong>$1</strong>');

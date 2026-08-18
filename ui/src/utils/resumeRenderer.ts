@@ -25,12 +25,19 @@ export function highlightKeywordsInText(text: string, keywords: string[]): strin
       const idx = result.toLowerCase().indexOf(cleanKw.toLowerCase(), searchIdx);
       if (idx === -1) break;
 
-      // Ensure word boundaries or not inside already highlighted tag
+      // Ensure word boundaries or not inside already highlighted tag / markdown bold
       const beforeChar = idx > 0 ? result[idx - 1] : '';
       const afterChar = idx + cleanKw.length < result.length ? result[idx + cleanKw.length] : '';
 
       const isWordChar = /[a-zA-Z0-9]/.test(beforeChar) || /[a-zA-Z0-9]/.test(afterChar);
-      const isAlreadyHighlighted = result.substring(Math.max(0, idx - 8), idx).includes('<strong>') || result.substring(Math.max(0, idx - 30), idx).includes('<span');
+      
+      // Check if it's surrounded by double asterisks (**Keyword**)
+      const isWrappedInAsterisks = (idx >= 2 && result.substring(idx - 2, idx) === '**') &&
+                                   (idx + cleanKw.length + 2 <= result.length && result.substring(idx + cleanKw.length, idx + cleanKw.length + 2) === '**');
+      
+      const isAlreadyHighlighted = result.substring(Math.max(0, idx - 8), idx).includes('<strong>') || 
+                                   result.substring(Math.max(0, idx - 30), idx).includes('<span') ||
+                                   isWrappedInAsterisks;
 
       if (!isWordChar && !isAlreadyHighlighted) {
         const actualMatch = result.substring(idx, idx + cleanKw.length);
@@ -65,11 +72,11 @@ export function renderFromStructured(sr: StructuredResume, fitToPage = false): s
   `;
 
   if (sr.summary) {
-    const summaryHighlighted = highlightKeywordsInText(sr.summary, keywords);
+    const formattedSummary = renderFormattedText(sr.summary);
     bodyHtml += `
     <section>
         <h2>PROFESSIONAL SUMMARY</h2>
-        <p>${renderFormattedText(summaryHighlighted)}</p>
+        <p>${formattedSummary}</p>
     </section>`;
   }
 
@@ -80,11 +87,11 @@ export function renderFromStructured(sr: StructuredResume, fitToPage = false): s
         <table class="skills-table">
             ${sr.skills.map(skill => {
               const cat = skill.category.replace(/:$/, '').trim();
-              const itemsHighlighted = highlightKeywordsInText(skill.items, keywords);
+              const formattedItems = renderFormattedText(skill.items);
               return `
               <tr>
                   <td><strong>${renderFormattedText(cat)} :</strong></td>
-                  <td>${renderFormattedText(itemsHighlighted)}</td>
+                  <td>${formattedItems}</td>
               </tr>`;
             }).join('')}
         </table>
@@ -97,11 +104,11 @@ export function renderFromStructured(sr: StructuredResume, fitToPage = false): s
         <h2>WORK EXPERIENCE</h2>
         ${sr.work_experience.map(job => {
           const bulletsHtml = (job.bullets || []).map(b => {
-            const highlightedBullet = highlightKeywordsInText(b, keywords);
-            return `<li>${formatBulletActionVerb(highlightedBullet)}</li>`;
+            const formattedBullet = formatBulletActionVerb(b);
+            return `<li>${formattedBullet}</li>`;
           }).join('');
 
-          const techStackHighlighted = job.tech_stack ? highlightKeywordsInText(job.tech_stack, keywords) : '';
+          const formattedTechStack = job.tech_stack ? renderFormattedText(job.tech_stack) : '';
 
           return `
             <div class="job-title-container flex-between">
@@ -116,7 +123,7 @@ export function renderFromStructured(sr: StructuredResume, fitToPage = false): s
             <ul>
                 ${bulletsHtml}
             </ul>
-            ${job.tech_stack ? `<div class="tech-used"><em>Technologies / Skills Used : ${renderFormattedText(techStackHighlighted)}</em></div>` : ''}
+            ${job.tech_stack ? `<div class="tech-used"><em>Technologies / Skills Used : ${formattedTechStack}</em></div>` : ''}
           `;
         }).join('')}
     </section>`;
