@@ -58,7 +58,7 @@ export function renderFromStructured(sr: StructuredResume, fitToPage = false): s
 
   let bodyHtml = `
     <header>
-        <h1>${escapeHTML(sr.name || 'VENUGOPAL HEGDE')}</h1>
+        <h1>${escapeHTML(sr.name || '')}</h1>
         ${sr.title ? `<div class="subtitle"><em>${escapeHTML(sr.title)}</em></div>` : ''}
         <div class="contact-info">
             ${(sr.contact_items || []).map(item => `

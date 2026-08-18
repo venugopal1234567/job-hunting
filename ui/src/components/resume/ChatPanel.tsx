@@ -29,6 +29,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
 }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [expandedEdits, setExpandedEdits] = useState<Record<string, boolean>>({});
+  const [appliedMessageIds, setAppliedMessageIds] = useState<Record<string, boolean>>({});
   
   // Custom command input state (no chat history maintained)
   const [customCommand, setCustomCommand] = useState('');
@@ -255,9 +256,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             </div>
 
             <div className="flex gap-2">
-              {onApplyFullResume && (
+              {onApplyFullResume && !appliedMessageIds[latestMessage.id] && (
                 <button
-                  onClick={() => onApplyFullResume(latestMessage.structuredResume!)}
+                  onClick={() => {
+                    onApplyFullResume(latestMessage.structuredResume!);
+                    setAppliedMessageIds(prev => ({ ...prev, [latestMessage.id]: true }));
+                  }}
                   className="flex-1 py-2 px-3 rounded-lg bg-brand-600 hover:bg-brand-500 text-white font-semibold shadow-md transition-all flex items-center justify-center gap-1.5"
                 >
                   <Check className="w-3.5 h-3.5 text-emerald-300" /> Apply to Canvas
