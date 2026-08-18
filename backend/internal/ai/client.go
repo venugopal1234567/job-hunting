@@ -119,9 +119,10 @@ func (c *Client) generateCompletion(prompt string, modelOverride string, jsonFor
 	var lastErr error
 
 	for _, model := range modelsToTry {
+		isRateLimited := false
 		for attempt := 0; attempt < 3; attempt++ {
 			if attempt > 0 {
-				sleepSec := time.Duration(attempt*2) * time.Second
+				sleepSec := time.Duration(attempt*4) * time.Second
 				log.Printf("[AI Client] Rate limited (429). Retrying attempt %d in %v for model %s...", attempt, sleepSec, model)
 				time.Sleep(sleepSec)
 			}
@@ -159,7 +160,8 @@ func (c *Client) generateCompletion(prompt string, modelOverride string, jsonFor
 
 			if resp.StatusCode == 429 {
 				resp.Body.Close()
-				lastErr = fmt.Errorf("nvidia api returned status 429 for model '%s'", model)
+				lastErr = fmt.Errorf("NVIDIA API rate limit exceeded (429). Please wait a moment before retrying.")
+				isRateLimited = true
 				continue
 			}
 
@@ -191,6 +193,11 @@ func (c *Client) generateCompletion(prompt string, modelOverride string, jsonFor
 			}
 
 			return openAIResp.Choices[0].Message.Content, nil
+		}
+
+		if isRateLimited {
+			// Fail fast and do not attempt other models, since the API key itself is rate-limited.
+			return "", lastErr
 		}
 	}
 
