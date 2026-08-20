@@ -20,7 +20,7 @@ const shortModelName = (name?: string) => {
 
 const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabChange, onScrape, scraping, jobCount, apiHealthy, activeModel }) => {
   return (
-    <nav className="bg-surface-container-low/90 backdrop-blur-xl rounded-full mt-4 mx-auto w-[95%] max-w-7xl sticky top-4 shadow-elevation-3 flex justify-between items-center px-4 sm:px-6 py-3 z-50 border border-surface-container-highest transition-all">
+    <nav className="bg-surface-container-low/90 backdrop-blur-xl rounded-full mx-auto w-[95%] max-w-7xl shadow-elevation-3 flex justify-between items-center px-4 sm:px-6 py-3 border border-surface-container-highest transition-all">
       {/* Brand */}
       <div className="flex items-center gap-3">
         <div className="relative w-10 h-10 rounded-full bg-primary flex items-center justify-center text-on-primary shadow-elevation-1">

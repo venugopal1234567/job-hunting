@@ -96,7 +96,7 @@ function App() {
   const highAtsCount = jobs.filter(j => j.ats_score !== null && j.ats_score >= 80).length;
 
   return (
-    <div className="min-h-screen bg-background text-on-surface pb-16 font-sans">
+    <div className="h-screen flex flex-col bg-background text-on-surface font-sans overflow-hidden">
       {/* Ambient Material 3 glow effects */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
         <div className="absolute -top-40 -right-40 w-96 h-96 bg-primary/5 rounded-full blur-3xl" />
@@ -104,19 +104,21 @@ function App() {
         <div className="absolute bottom-10 right-1/4 w-96 h-96 bg-tertiary-fixed/15 rounded-full blur-3xl" />
       </div>
 
-      <Navbar
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        onScrape={triggerManualScrape}
-        scraping={scraping}
-        jobCount={total}
-        apiHealthy={apiHealthy}
-        activeModel={activeModel}
-      />
+      <header className="flex-shrink-0 pt-4 pb-2 px-4 z-40">
+        <Navbar
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          onScrape={triggerManualScrape}
+          scraping={scraping}
+          jobCount={total}
+          apiHealthy={apiHealthy}
+          activeModel={activeModel}
+        />
+      </header>
 
       {/* API status banner */}
       {!apiHealthy && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-3">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-1 mb-2 flex-shrink-0">
           <div className="bg-error-container text-on-error-container border border-error/20 rounded-full px-4 py-2 flex items-center justify-center gap-2 shadow-sm text-xs font-medium">
             <WifiOff className="w-3.5 h-3.5" />
             <span>Backend API offline. Start the Go server on port 8080.</span>
@@ -124,7 +126,7 @@ function App() {
         </div>
       )}
 
-      <main className={`${activeTab === 'resume' ? 'w-full px-4 lg:px-6' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'} py-6 relative`}>
+      <main className={`flex-1 min-h-0 overflow-y-auto ${activeTab === 'resume' ? 'w-full px-4 lg:px-6 pb-6' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 w-full'} relative`}>
         {/* ─── Dashboard Tab ─── */}
         {activeTab === 'dashboard' && (
           <div className="space-y-6">

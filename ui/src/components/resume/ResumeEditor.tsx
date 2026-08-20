@@ -335,7 +335,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
       />
 
       {/* 50/50 Split Workspace Grid */}
-      <div className={`grid grid-cols-1 ${chatVisible ? 'lg:grid-cols-2' : 'lg:grid-cols-1'} gap-4 h-[calc(100vh-200px)] min-h-[550px] w-full no-print`}>
+      <div className={`grid grid-cols-1 ${chatVisible ? 'lg:grid-cols-2' : 'lg:grid-cols-1'} gap-4 h-[calc(100vh-210px)] min-h-[500px] w-full no-print`}>
         {/* AI Resume Coach Sidebar Panel */}
         {chatVisible && (
           <div className="min-w-0 h-full glass rounded-xl border border-white/10 overflow-hidden flex flex-col no-print shadow-xl">
