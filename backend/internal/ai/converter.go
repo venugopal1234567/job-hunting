@@ -128,7 +128,19 @@ func structuredToTextGo(sr *models.StructuredResume) string {
 
 	if len(sr.Skills) > 0 {
 		sb.WriteString("SKILLS\n")
+		// Put Programming Languages at top of prompt context
+		var progSkills []models.SkillCategory
+		var otherSkills []models.SkillCategory
 		for _, skill := range sr.Skills {
+			cat := strings.TrimSpace(skill.Category)
+			catLower := strings.ToLower(cat)
+			if strings.Contains(catLower, "programming language") || strings.Contains(catLower, "language") {
+				progSkills = append(progSkills, skill)
+			} else {
+				otherSkills = append(otherSkills, skill)
+			}
+		}
+		for _, skill := range append(progSkills, otherSkills...) {
 			cat := strings.TrimSpace(skill.Category)
 			items := strings.TrimSpace(skill.Items)
 			if cat != "" && items != "" {

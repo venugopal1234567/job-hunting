@@ -88,6 +88,7 @@ CRITICAL RULES:
 - Keep official job titles unchanged unless the instruction explicitly says to change them.
 - PRESERVE HIGHLIGHTS & BOLDING: You MUST preserve ALL existing highlighted text and bold markdown formatting (**keyword**) across summary, bullet points, and skills from the current resume.
 - PRESERVE ALL highlight_keywords in the "highlight_keywords" array. Retain all previously highlighted terms and append any newly added keywords.
+- MANDATORY SKILL CATEGORY ORDER: In "skills", "Programming Languages" MUST ALWAYS be the first category at the top, followed by Databases, Frameworks & Libraries, Tools & Platforms, and Soft Skills.
 - structured_resume MUST always be populated (never null).
 - gap_prompts MUST be an empty array [].
 
@@ -123,6 +124,10 @@ Respond ONLY with a valid JSON object matching exactly this schema:
     "summary": "<Professional Summary text tailored to job requirements with key metrics>",
     "skills": [
       {
+        "category": "Programming Languages",
+        "items": "Go, Python, TypeScript, SQL, Shell Scripting"
+      },
+      {
         "category": "Databases",
         "items": "PostgreSQL, DynamoDB, Redis, MongoDB, NATS, Google Pub/Sub"
       },
@@ -131,16 +136,12 @@ Respond ONLY with a valid JSON object matching exactly this schema:
         "items": "Kubernetes, Docker, Helm"
       },
       {
-        "category": "Programming Languages",
-        "items": "Go, Python, TypeScript, SQL, Shell Scripting"
+        "category": "Tools & Platforms",
+        "items": "AWS, Azure, GCP, CI/CD Automation"
       },
       {
         "category": "Soft Skills",
-        "items": "Platform Engineering, Test-Driven Development (TDD), System Design, Agile/Scrum, Remote Collaboration"
-      },
-      {
-        "category": "Tools & Platforms",
-        "items": "AWS, Azure, GCP, CI/CD Automation"
+        "items": "System Design, Agile / Scrum, Technical Leadership, Remote Collaboration"
       }
     ],
     "work_experience": [
@@ -176,6 +177,8 @@ CRITICAL RULES & CONSTRAINTS:
 - MANDATORY KEYWORD BOLDING ACROSS ALL SECTIONS: In "summary", "work_experience" (both bullet points and tech_stack), and "skills", you MUST wrap the high-value technical keywords, frameworks, databases, and core skills that match the target Job Description in markdown bold syntax (for example: **Go**, **Kubernetes**, **client-go**, **controller-runtime**, **NATS**, **gRPC**, **PostgreSQL**, **Redis**, **Distributed Tracing**, **TDD**).
 - BULLET POINT VERBS: Every bullet point in work_experience MUST also start with a strong bold action verb (e.g. **Architected**, **Spearheaded**, **Developed**, **Built**, **Optimized**).
 - Do NOT bold arbitrary words or whole filler phrases. Bold ONLY the action verbs and the specific high-value Job Description keywords.
+- MANDATORY SKILL CATEGORY ORDER: In "skills", "Programming Languages" MUST ALWAYS be the very first category at the top of the array, followed by other categories (such as Databases, Frameworks & Libraries, Tools & Platforms, and Soft Skills).
+- CONCISE & AUTHENTIC SOFT SKILLS: "Soft Skills" must be concise and authentic (maximum 3-5 genuine items like System Design, Agile/Scrum, Technical Leadership, Remote Collaboration). NEVER crowd or over-stuff Soft Skills with technical domains or laundry lists (do NOT put Platform Engineering, REST API Design, Data Processing, Frontend Development, Rule Engine Development into Soft Skills).
 - NEVER LOOP QUESTIONS: If the candidate is answering previous gap questions, or if the candidate explicitly asks to skip questions / generate immediately / continue without asking, you MUST IMMEDIATELY proceed to PHASE 2. In this case, "gap_prompts" MUST be [] and you MUST output the complete "structured_resume". Under NO circumstances should you ask repeat or new questions.
 - Ensure proper spacing after punctuation.
 - Return [] for "gap_prompts" and null for "structured_resume" if not generating a resume edit.

@@ -53,5 +53,6 @@ const SinglePageFitConstraint = `
 CRITICAL SINGLE PAGE FIT & ZERO LOSS CONSTRAINTS:
 1. YOU MUST PRESERVE EVERY SINGLE WORK EXPERIENCE ENTRY AND COMPANY FROM THE ORIGINAL RESUME. NEVER STRIP OFF, DELETE, OR OMIT ANY COMPANY OR JOB EXPERIENCE.
 2. To fit strictly on 1 single letter page, condense each bullet point into punchy, high-impact single-line achievements. Eliminate filler words, but DO NOT drop entire bullet points or whole job experiences.
-3. Categorize skills into clean, standardized categories matching: "Databases", "Frameworks & Libraries", "Programming Languages", "Soft Skills", "Tools & Platforms".
-4. Ensure "tech_stack" is populated for every work experience entry.`
+3. Categorize skills into clean, standardized categories with "Programming Languages" ALWAYS FIRST, followed by "Databases", "Frameworks & Libraries", "Tools & Platforms", "Soft Skills".
+4. Soft Skills must be concise and authentic (limit to 3-5 genuine items like System Design, Agile/Scrum, Technical Leadership). Never crowd Soft Skills with generic laundry lists.
+5. Ensure "tech_stack" is populated for every work experience entry.`
