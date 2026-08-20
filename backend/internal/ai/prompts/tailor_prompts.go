@@ -39,7 +39,62 @@ CANDIDATE RESUME EXCERPT:
 
 OUTPUT STRICTLY JSON:`
 
-// ChatResumePromptTemplate is used for interactive chat and resume tailoring
+// DirectCommandPromptTemplate is used when the user sends a direct edit instruction via "Ask AI".
+// It skips job description context and gap analysis — the AI just executes the instruction and
+// returns the updated structured resume directly.
+const DirectCommandPromptTemplate = `You are a resume editor. The candidate has given you a direct instruction to update their resume.
+
+Execute the instruction EXACTLY as asked. Do NOT ask clarifying questions. Do NOT perform gap analysis. Do NOT compare against any job description. Just apply the change and return the updated resume.
+
+Respond ONLY with a valid JSON object matching exactly this schema:
+{
+  "message": "<Brief 1-sentence confirmation of what you changed.>",
+  "proposed_edits": [],
+  "gap_prompts": [],
+  "structured_resume": {
+    "name": "<Candidate Full Name>",
+    "title": "<Candidate Professional Title>",
+    "contact_items": ["<Phone>", "<Email>", "<Location>"],
+    "summary": "<Professional Summary>",
+    "skills": [
+      {
+        "category": "<Category Name>",
+        "items": "<Comma-separated items>"
+      }
+    ],
+    "work_experience": [
+      {
+        "title": "<Job Title>",
+        "date": "<Dates>",
+        "company": "<Company Name>",
+        "location": "<Location>",
+        "bullets": ["<Bullet point>"],
+        "tech_stack": "<Tech stack>"
+      }
+    ],
+    "education": [
+      {
+        "institution": "<Institution>",
+        "date": "<Years>",
+        "degree": "<Degree>"
+      }
+    ],
+    "highlight_keywords": ["<keyword1>", "<keyword2>"]
+  }
+}
+
+CRITICAL RULES:
+- PRESERVE ALL work experience entries — never remove any company or job role.
+- Keep official job titles unchanged unless the instruction explicitly says to change them.
+- structured_resume MUST always be populated (never null).
+- gap_prompts MUST be an empty array [].
+
+CURRENT RESUME:
+%s
+
+INSTRUCTION: %s
+
+OUTPUT STRICTLY JSON:`
 const ChatResumePromptTemplate = `You are a Senior Technical Recruiter and ATS Resume Analyst. 
 Your goal is to help the candidate perfectly tailor their resume for the target Job Description into an elegant, high-converting HTML/ATS resume format.
 

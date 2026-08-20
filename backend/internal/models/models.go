@@ -119,7 +119,8 @@ type ChatRequest struct {
 	ResumeStructured *StructuredResume `json:"resume_structured,omitempty"`
 	JobID            string            `json:"job_id,omitempty"`
 	CustomJD         string            `json:"custom_jd,omitempty"`
-	Model            string            `json:"model,omitempty"` // optional per-request model override
+	Model            string            `json:"model,omitempty"`          // optional per-request model override
+	DirectCommand    bool              `json:"direct_command,omitempty"` // skip JD context & gap analysis, just execute the instruction
 }
 
 // StructuredResume represents complete AI generated HTML structured components

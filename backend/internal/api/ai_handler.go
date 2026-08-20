@@ -19,6 +19,10 @@ func (h *Handler) ChatResume(c *gin.Context) {
 
 	ctx := c.Request.Context()
 	activeModel := h.getActiveModelWithContext(ctx)
+	// Per-request model override: if caller specifies a model, use it
+	if req.Model != "" {
+		activeModel = req.Model
+	}
 
 	jobContext := ""
 	if req.CustomJD != "" {
@@ -49,14 +53,22 @@ func (h *Handler) GetAIModels(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"models": models})
 }
 
-// GET /ai/settings
+// GET /settings/ai
 func (h *Handler) GetAISettings(c *gin.Context) {
 	ctx := c.Request.Context()
 	activeModel := h.getActiveModelWithContext(ctx)
-	provider := "nvidia"
+	defaultModel := h.aiClient.DefaultModel()
+
+	availableModels, err := h.aiClient.ListModels()
+	if err != nil {
+		availableModels = nil
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"active_model": activeModel,
-		"provider":     provider,
+		"active_model":    activeModel,
+		"default_model":   defaultModel,
+		"available_models": availableModels,
+		"provider":        "nvidia",
 	})
 }
 

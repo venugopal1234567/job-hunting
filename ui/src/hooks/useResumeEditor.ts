@@ -29,7 +29,7 @@ export const useResumeEditor = (jobId?: string) => {
   }, []);
 
   // Send a chat message to the AI
-  const sendMessage = useCallback(async (userText: string, model?: string, customJd?: string) => {
+  const sendMessage = useCallback(async (userText: string, model?: string, customJd?: string, directCommand?: boolean) => {
     if (!userText.trim() || isChatLoading || !canvasStructured) return;
 
     const userMsg: ChatMessage = {
@@ -42,7 +42,7 @@ export const useResumeEditor = (jobId?: string) => {
     setIsChatLoading(true);
 
     try {
-      const response = await chatWithResume(userText, canvasStructured, jobId, model, customJd);
+      const response = await chatWithResume(userText, canvasStructured, jobId, model, customJd, directCommand);
 
       const aiMsg: ChatMessage = {
         id: mkId(),

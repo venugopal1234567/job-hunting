@@ -49,33 +49,30 @@ func (c *Client) DefaultModel() string {
 // ListModels returns available NVIDIA models for display
 func (c *Client) ListModels() ([]models.NvidiaModel, error) {
 	defaultM := c.DefaultModel()
-	return []models.NvidiaModel{
-		{
-			Name:   "deepseek-ai/deepseek-r1",
-			Size:   0,
-			Family: "nvidia",
-		},
-		{
-			Name:   "meta/llama-3.3-70b-instruct",
-			Size:   0,
-			Family: "nvidia",
-		},
-		{
-			Name:   "qwen/qwen2.5-72b-instruct",
-			Size:   0,
-			Family: "nvidia",
-		},
-		{
-			Name:   defaultM,
-			Size:   0,
-			Family: "nvidia",
-		},
-		{
-			Name:   "nvidia/nemotron-3.5-lightning-30b-a3b",
-			Size:   0,
-			Family: "nvidia",
-		},
-	}, nil
+
+	// Build deduplicated list so the active model always appears
+	baseModels := []models.NvidiaModel{
+		{Name: "deepseek-ai/deepseek-r1", Size: 0, Family: "deepseek"},
+		{Name: "meta/llama-3.3-70b-instruct", Size: 0, Family: "meta"},
+		{Name: "qwen/qwen2.5-72b-instruct", Size: 0, Family: "qwen"},
+		{Name: "nvidia/nemotron-3.5-lightning-30b-a3b", Size: 0, Family: "nvidia"},
+		{Name: "openai/gpt-oss-20b", Size: 0, Family: "openai"},
+		{Name: "minimaxai/minimax-m3", Size: 0, Family: "minimax"},
+	}
+
+	// Ensure the configured default/active model is always in the list
+	found := false
+	for _, m := range baseModels {
+		if m.Name == defaultM {
+			found = true
+			break
+		}
+	}
+	if !found {
+		baseModels = append([]models.NvidiaModel{{Name: defaultM, Size: 0, Family: "nvidia"}}, baseModels...)
+	}
+
+	return baseModels, nil
 }
 
 // resolveModel returns the override if non-empty, else default model

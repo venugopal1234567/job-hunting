@@ -46,6 +46,8 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
   const [activeSubTab, setActiveSubTab] = useState<'editor' | 'pdf'>('editor');
   const [hasPDF, setHasPDF] = useState(false);
   const [activeModel, setActiveModel] = useState<string>('');
+  const [customJdEnabled, setCustomJdEnabled] = useState(true);
+  const [customJdText, setCustomJdText] = useState('');
   const [fitToSinglePage, setFitToSinglePage] = useState(true);
   const [exportingPDF] = useState(false);
   const [isConvertingLayout, setIsConvertingLayout] = useState(false);
@@ -141,7 +143,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
     if (!selectedJob) return;
     setAtsLoading(true);
     try {
-      const result = await analyzeJob(selectedJob.id, undefined, force);
+      const result = await analyzeJob(selectedJob.id, undefined, force, activeModel || undefined);
       setPrevAtsScore(atsScore);
       setAtsScore(result.ats_score);
     } catch {
@@ -149,7 +151,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
     } finally {
       setAtsLoading(false);
     }
-  }, [selectedJob, atsScore]);
+  }, [selectedJob, atsScore, activeModel]);
 
   const handleRevert = useCallback(async () => {
     if (!window.confirm('Are you sure you want to revert all changes? This will restore the original resume text.')) {
@@ -326,12 +328,16 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
             <ChatPanel
               messages={chatMessages}
               loading={isChatLoading}
-              onSend={(text, customJd) => sendMessage(text, activeModel, customJd)}
+              onSend={(text, customJd, directCommand) => sendMessage(text, activeModel, customJd, directCommand)}
               onAnswerGap={answerGapQuestion}
               jobTitle={selectedJob?.title}
               activeModel={activeModel}
               onModelChange={setActiveModel}
               onApplyFullResume={handleApplyFullResume}
+              customJdText={customJdText}
+              customJdEnabled={customJdEnabled}
+              onCustomJdTextChange={setCustomJdText}
+              onCustomJdEnabledChange={setCustomJdEnabled}
             />
           </div>
         )}

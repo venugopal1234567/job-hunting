@@ -68,6 +68,8 @@ func (h *Handler) AnalyzeJob(c *gin.Context) {
 	var req struct {
 		JobID    string `json:"job_id"`
 		ResumeID string `json:"resume_id"`
+		Model    string `json:"model"`
+		CustomJD string `json:"custom_jd"`
 	}
 	_ = c.ShouldBindJSON(&req)
 
@@ -76,37 +78,43 @@ func (h *Handler) AnalyzeJob(c *gin.Context) {
 		jobID = req.JobID
 	}
 
-	if jobID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Job ID is required"})
+	if jobID == "" && req.CustomJD == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Job ID or custom job description is required"})
 		return
 	}
 
 	ctx := c.Request.Context()
 
-	// Get active resume if not specified
-	var resume *models.Resume
-	var err error
-	if req.ResumeID == "" {
-		resume, err = h.resumeRepo.GetActiveResume(ctx)
-		if err != nil || resume == nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "No active resume found. Please upload a resume first."})
-			return
-		}
-	} else {
-		resume, err = h.resumeRepo.GetActiveResume(ctx)
-		if err != nil || resume == nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Resume not found"})
-			return
-		}
-	}
-
-	job, err := h.jobRepo.GetJobByID(ctx, jobID)
-	if err != nil || job == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Job not found"})
+	// Get active resume
+	resume, err := h.resumeRepo.GetActiveResume(ctx)
+	if err != nil || resume == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "No active resume found. Please upload a resume first."})
 		return
 	}
 
+	// Resolve which job to analyze against
+	var job *models.Job
+	if req.CustomJD != "" {
+		// Use a synthetic job built from the custom JD text
+		job = &models.Job{
+			ID:          "custom",
+			Title:       "Custom Job",
+			Company:     "Custom",
+			Description: req.CustomJD,
+		}
+	} else {
+		job, err = h.jobRepo.GetJobByID(ctx, jobID)
+		if err != nil || job == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Job not found"})
+			return
+		}
+	}
+
 	activeModel := h.getActiveModelWithContext(ctx)
+	// Per-request model override
+	if req.Model != "" {
+		activeModel = req.Model
+	}
 	analysis, err := h.aiClient.AnalyzeATSMatch(job, resume, activeModel)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "AI analysis failed: " + err.Error()})

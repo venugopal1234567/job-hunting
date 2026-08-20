@@ -88,16 +88,24 @@ func (c *Client) ChatWithResume(req *models.ChatRequest, jobContext string, mode
 
 // buildChatPrompt constructs the resume chat prompt
 func buildChatPrompt(req *models.ChatRequest, jobContext string) string {
-	jobSection := ""
-	if jobContext != "" {
-		jobSection = fmt.Sprintf("\n\nTARGET JOB DESCRIPTION:\n%s", truncate(jobContext, 500000))
-	}
-
 	var cleanResumeText string
 	if req.ResumeStructured != nil {
 		cleanResumeText = structuredToTextGo(req.ResumeStructured)
 	} else {
 		cleanResumeText = stripHTMLForPrompt(req.ResumeText)
+	}
+
+	// Direct command: skip JD context and gap analysis, just execute the instruction
+	if req.DirectCommand {
+		return fmt.Sprintf(prompts.DirectCommandPromptTemplate,
+			truncate(cleanResumeText, 500000),
+			req.Message,
+		)
+	}
+
+	jobSection := ""
+	if jobContext != "" {
+		jobSection = fmt.Sprintf("\n\nTARGET JOB DESCRIPTION:\n%s", truncate(jobContext, 500000))
 	}
 
 	return fmt.Sprintf(prompts.ChatResumePromptTemplate,

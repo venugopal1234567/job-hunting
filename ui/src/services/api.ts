@@ -28,9 +28,12 @@ export const triggerScrape = async (): Promise<{ message: string }> => {
 
 // ─── ATS Analysis ──────────────────────────────────────────────────────────────
 
-export const analyzeJob = async (jobId: string, resumeId?: string, force = false): Promise<ATSAnalysis> => {
+export const analyzeJob = async (jobId: string, resumeId?: string, force = false, model?: string): Promise<ATSAnalysis> => {
   const url = `/jobs/${jobId}/analyze${force ? '?force=true' : ''}`;
-  const { data } = await api.post<ATSAnalysis>(url, resumeId ? { resume_id: resumeId } : {});
+  const body: Record<string, string> = {};
+  if (resumeId) body.resume_id = resumeId;
+  if (model) body.model = model;
+  const { data } = await api.post<ATSAnalysis>(url, body);
   return data;
 };
 
@@ -100,7 +103,8 @@ export const chatWithResume = async (
   resumeStructured: StructuredResume,
   jobId?: string,
   model?: string,
-  customJd?: string
+  customJd?: string,
+  directCommand?: boolean
 ): Promise<{ message: string; proposed_edits?: any[]; gap_prompts?: any[]; structured_resume?: StructuredResume }> => {
   const { data } = await api.post('/resume/chat', {
     message,
@@ -108,6 +112,7 @@ export const chatWithResume = async (
     job_id: jobId || '',
     model: model || '',
     custom_jd: customJd || '',
+    direct_command: directCommand ?? false,
   });
   return data;
 };

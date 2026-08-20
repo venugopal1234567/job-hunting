@@ -25,11 +25,15 @@ const formatAge = (isoDate: string): string => {
 };
 
 const familyColor: Record<string, string> = {
-  nvidia: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/20',
-  openai: 'bg-violet-500/15 text-violet-300 border-violet-500/20',
-  meta:   'bg-blue-500/15 text-blue-300 border-blue-500/20',
-  mistral:'bg-amber-500/15 text-amber-300 border-amber-500/20',
-  google: 'bg-pink-500/15 text-pink-300 border-pink-500/20',
+  nvidia:   'bg-emerald-500/15 text-emerald-300 border-emerald-500/20',
+  openai:   'bg-violet-500/15 text-violet-300 border-violet-500/20',
+  meta:     'bg-blue-500/15 text-blue-300 border-blue-500/20',
+  mistral:  'bg-amber-500/15 text-amber-300 border-amber-500/20',
+  google:   'bg-pink-500/15 text-pink-300 border-pink-500/20',
+  deepseek: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/20',
+  minimax:  'bg-orange-500/15 text-orange-300 border-orange-500/20',
+  qwen:     'bg-teal-500/15 text-teal-300 border-teal-500/20',
+  'z-ai':   'bg-purple-500/15 text-purple-300 border-purple-500/20',
 };
 
 const getFamilyClass = (model: NvidiaModel): string => {

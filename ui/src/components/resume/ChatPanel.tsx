@@ -10,12 +10,16 @@ import { getAISettings, NvidiaModel } from '../../services/api';
 interface ChatPanelProps {
   messages: ChatMessage[];
   loading: boolean;
-  onSend: (text: string, customJd?: string) => void;
+  onSend: (text: string, customJd?: string, directCommand?: boolean) => void;
   onAnswerGap: (skill: string, answer: 'yes' | 'no' | string) => void;
   jobTitle?: string;
   activeModel?: string;
   onModelChange?: (model: string) => void;
   onApplyFullResume?: (text: string | object) => void;
+  customJdText: string;
+  customJdEnabled: boolean;
+  onCustomJdTextChange: (text: string) => void;
+  onCustomJdEnabledChange: (enabled: boolean) => void;
 }
 
 const ChatPanel: React.FC<ChatPanelProps> = ({
@@ -26,6 +30,10 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   activeModel: activeModelProp,
   onModelChange,
   onApplyFullResume,
+  customJdText,
+  customJdEnabled,
+  onCustomJdTextChange,
+  onCustomJdEnabledChange,
 }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [expandedEdits, setExpandedEdits] = useState<Record<string, boolean>>({});
@@ -34,10 +42,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   // Custom command input state (no chat history maintained)
   const [customCommand, setCustomCommand] = useState('');
 
-  // Custom JD toggle and text state
-  const [customJdEnabled, setCustomJdEnabled] = useState(true);
-  const [customJdText, setCustomJdText] = useState('');
-  
   // Track wizard answers
   const [answers, setAnswers] = useState<Record<string, { answered: boolean; hasSkill: boolean; details: string }>>({});
   const [availableModels, setAvailableModels] = useState<NvidiaModel[]>([]);
@@ -78,8 +82,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     if (e) e.preventDefault();
     if (!customCommand.trim() || loading) return;
 
-    const jdContext = customJdEnabled && customJdText.trim() ? customJdText.trim() : undefined;
-    onSend(customCommand.trim(), jdContext);
+    // "Ask AI" box: direct command — skip JD context and gap analysis
+    onSend(customCommand.trim(), undefined, true);
     setCustomCommand('');
   };
 
@@ -403,7 +407,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
               type="checkbox"
               id="toggle-custom-jd"
               checked={customJdEnabled}
-              onChange={(e) => setCustomJdEnabled(e.target.checked)}
+              onChange={(e) => onCustomJdEnabledChange(e.target.checked)}
               className="sr-only peer"
             />
             <div className="w-8 h-4 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-600"></div>
@@ -415,7 +419,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             <textarea
               id="custom-jd-input"
               value={customJdText}
-              onChange={(e) => setCustomJdText(e.target.value)}
+              onChange={(e) => onCustomJdTextChange(e.target.value)}
               placeholder="Paste custom job description or requirements context here..."
               rows={2}
               className="w-full bg-surface-300 border border-white/10 rounded-lg p-2 text-xs text-gray-200 outline-none focus:border-indigo-500/60 placeholder:text-gray-500 resize-none font-mono"
