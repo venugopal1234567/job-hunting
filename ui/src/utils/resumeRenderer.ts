@@ -53,97 +53,101 @@ export function highlightKeywordsInText(text: string, keywords: string[]): strin
 }
 
 export function renderFromStructured(sr: StructuredResume, fitToPage = false): string {
-  if (!sr) return '';
-  const keywords = sr.highlight_keywords || [];
+  if (!sr || typeof sr !== 'object') return '';
 
-  let bodyHtml = `
-    <header>
-        <h1>${escapeHTML(sr.name || '')}</h1>
-        ${sr.title ? `<div class="subtitle"><em>${escapeHTML(sr.title)}</em></div>` : ''}
-        <div class="contact-info">
-            ${(sr.contact_items || []).map(item => `
-                <span>
-                    ${getContactIconSVG(item)}
-                    ${escapeHTML(item)}
-                </span>
-            `).join('')}
-        </div>
-    </header>
-  `;
+  try {
+    let bodyHtml = `
+      <header>
+          <h1>${escapeHTML(sr.name || '')}</h1>
+          ${sr.title ? `<div class="subtitle"><em>${escapeHTML(sr.title)}</em></div>` : ''}
+          <div class="contact-info">
+              ${(sr.contact_items || []).filter(Boolean).map(item => `
+                  <span>
+                      ${getContactIconSVG(item)}
+                      ${escapeHTML(item)}
+                  </span>
+              `).join('')}
+          </div>
+      </header>
+    `;
 
-  if (sr.summary) {
-    const formattedSummary = renderFormattedText(sr.summary);
-    bodyHtml += `
-    <section>
-        <h2>PROFESSIONAL SUMMARY</h2>
-        <p>${formattedSummary}</p>
-    </section>`;
+    if (sr.summary) {
+      const formattedSummary = renderFormattedText(sr.summary);
+      bodyHtml += `
+      <section>
+          <h2>PROFESSIONAL SUMMARY</h2>
+          <p>${formattedSummary}</p>
+      </section>`;
+    }
+
+    if (Array.isArray(sr.skills) && sr.skills.length > 0) {
+      bodyHtml += `
+      <section>
+          <h2>SKILLS</h2>
+          <table class="skills-table">
+              ${sr.skills.filter(Boolean).map(skill => {
+                const cat = (skill.category || '').replace(/:$/, '').trim();
+                const formattedItems = renderFormattedText(skill.items || '');
+                return `
+                <tr>
+                    <td><strong>${renderFormattedText(cat)} :</strong></td>
+                    <td>${formattedItems}</td>
+                </tr>`;
+              }).join('')}
+          </table>
+      </section>`;
+    }
+
+    if (Array.isArray(sr.work_experience) && sr.work_experience.length > 0) {
+      bodyHtml += `
+      <section>
+          <h2>WORK EXPERIENCE</h2>
+          ${sr.work_experience.filter(Boolean).map(job => {
+            const bulletsHtml = (job.bullets || []).filter(Boolean).map(b => {
+              const formattedBullet = formatBulletActionVerb(b);
+              return `<li>${formattedBullet}</li>`;
+            }).join('');
+
+            const formattedTechStack = job.tech_stack ? renderFormattedText(job.tech_stack) : '';
+
+            return `
+              <div class="job-title-container flex-between">
+                  <div class="job-title">${formatJobTitleLine(job.title || '')}</div>
+                  <div class="job-date">${escapeHTML(job.date || '')}</div>
+              </div>
+              ${(job.company || job.location) ? `
+              <div class="company-container flex-between">
+                  <div class="company-name"><em>${renderFormattedText(job.company || '')}</em></div>
+                  <div class="job-location"><em>${renderFormattedText(job.location || '')}</em></div>
+              </div>` : ''}
+              <ul>
+                  ${bulletsHtml}
+              </ul>
+              ${job.tech_stack ? `<div class="tech-used"><em>Technologies / Skills Used : ${formattedTechStack}</em></div>` : ''}
+            `;
+          }).join('')}
+      </section>`;
+    }
+
+    if (Array.isArray(sr.education) && sr.education.length > 0) {
+      bodyHtml += `
+      <section>
+          <h2>EDUCATION</h2>
+          ${sr.education.filter(Boolean).map(edu => `
+              <div class="flex-between" style="font-size: ${fitToPage ? '13.5px' : '14.5px'}; font-family: 'Times New Roman', Times, serif;">
+                  <div><strong>${renderFormattedText(edu.institution || '')}</strong></div>
+                  <div>${escapeHTML(edu.date || '')}</div>
+              </div>
+              <div class="edu-details"><em>${renderFormattedText(edu.degree || '')}</em></div>
+          `).join('')}
+      </section>`;
+    }
+
+    return bodyHtml;
+  } catch (e) {
+    console.error('[resumeRenderer] Error rendering structured resume:', e);
+    return `<div style="padding: 20px; color: red;">Failed to render resume layout.</div>`;
   }
-
-  if (sr.skills && sr.skills.length > 0) {
-    bodyHtml += `
-    <section>
-        <h2>SKILLS</h2>
-        <table class="skills-table">
-            ${sr.skills.map(skill => {
-              const cat = skill.category.replace(/:$/, '').trim();
-              const formattedItems = renderFormattedText(skill.items);
-              return `
-              <tr>
-                  <td><strong>${renderFormattedText(cat)} :</strong></td>
-                  <td>${formattedItems}</td>
-              </tr>`;
-            }).join('')}
-        </table>
-    </section>`;
-  }
-
-  if (sr.work_experience && sr.work_experience.length > 0) {
-    bodyHtml += `
-    <section>
-        <h2>WORK EXPERIENCE</h2>
-        ${sr.work_experience.map(job => {
-          const bulletsHtml = (job.bullets || []).map(b => {
-            const formattedBullet = formatBulletActionVerb(b);
-            return `<li>${formattedBullet}</li>`;
-          }).join('');
-
-          const formattedTechStack = job.tech_stack ? renderFormattedText(job.tech_stack) : '';
-
-          return `
-            <div class="job-title-container flex-between">
-                <div class="job-title">${formatJobTitleLine(job.title)}</div>
-                <div class="job-date">${escapeHTML(job.date)}</div>
-            </div>
-            ${(job.company || job.location) ? `
-            <div class="company-container flex-between">
-                <div class="company-name"><em>${renderFormattedText(job.company)}</em></div>
-                <div class="job-location"><em>${renderFormattedText(job.location)}</em></div>
-            </div>` : ''}
-            <ul>
-                ${bulletsHtml}
-            </ul>
-            ${job.tech_stack ? `<div class="tech-used"><em>Technologies / Skills Used : ${formattedTechStack}</em></div>` : ''}
-          `;
-        }).join('')}
-    </section>`;
-  }
-
-  if (sr.education && sr.education.length > 0) {
-    bodyHtml += `
-    <section>
-        <h2>EDUCATION</h2>
-        ${sr.education.map(edu => `
-            <div class="flex-between" style="font-size: ${fitToPage ? '13.5px' : '14.5px'}; font-family: 'Times New Roman', Times, serif;">
-                <div><strong>${renderFormattedText(edu.institution)}</strong></div>
-                <div>${escapeHTML(edu.date)}</div>
-            </div>
-            <div class="edu-details"><em>${renderFormattedText(edu.degree)}</em></div>
-        `).join('')}
-    </section>`;
-  }
-
-  return bodyHtml;
 }
 
 export const generatePrintHTMLFromStructured = (sr: StructuredResume, fitToPage = false): string => {

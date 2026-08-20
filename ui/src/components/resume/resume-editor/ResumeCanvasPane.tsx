@@ -34,29 +34,22 @@ export const ResumeCanvasPane: React.FC<ResumeCanvasPaneProps> = ({
 }) => {
   const canvasRef = useRef<HTMLDivElement>(null);
 
-  // Track the last (content + fitToSinglePage) pair we rendered
-  const lastRenderedKey = useRef<string>('');
-
   useEffect(() => {
     if (activeSubTab !== 'editor') {
-      lastRenderedKey.current = '';
       return;
     }
 
     const canvas = canvasRef.current;
     if (!canvas || !canvasStructured) return;
 
-    const newKey = `${JSON.stringify(canvasStructured)}::${fitToSinglePage}`;
-    if (newKey === lastRenderedKey.current) return;
-    lastRenderedKey.current = newKey;
-
-    canvas.innerHTML = renderFromStructured(canvasStructured, fitToSinglePage);
-
-    return () => {
-      if (canvas) {
-        canvas.innerHTML = '';
+    try {
+      const html = renderFromStructured(canvasStructured, fitToSinglePage);
+      if (html) {
+        canvas.innerHTML = html;
       }
-    };
+    } catch (e) {
+      console.error('[ResumeCanvasPane] Error rendering canvas:', e);
+    }
   }, [activeSubTab, canvasStructured, fitToSinglePage]);
 
   // Compute character length safely

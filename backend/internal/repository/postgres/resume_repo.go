@@ -94,6 +94,19 @@ func (r *ResumeRepo) SaveResume(ctx context.Context, resume *models.Resume) erro
 	}
 	defer tx.Rollback()
 
+	// Check if there is an existing active resume with edited_structured or edited_text to preserve
+	var existingEditedJSON []byte
+	var existingEditedText sql.NullString
+	_ = tx.QueryRowContext(ctx, `SELECT edited_structured, edited_text FROM resumes WHERE is_active = true ORDER BY uploaded_at DESC LIMIT 1`).Scan(&existingEditedJSON, &existingEditedText)
+
+	// If resume.EditedStructured is not explicitly set, carry over the existing working/edited resume
+	if resume.EditedStructured == nil && len(existingEditedJSON) > 0 {
+		var existingStruct models.StructuredResume
+		if err := json.Unmarshal(existingEditedJSON, &existingStruct); err == nil {
+			resume.EditedStructured = &existingStruct
+		}
+	}
+
 	// Deactivate all existing resumes
 	_, err = tx.ExecContext(ctx, `UPDATE resumes SET is_active = false`)
 	if err != nil {
@@ -101,16 +114,19 @@ func (r *ResumeRepo) SaveResume(ctx context.Context, resume *models.Resume) erro
 	}
 
 	skillsJSON, _ := json.Marshal(resume.ExtractedSkills)
-	var initStructuredJSON []byte
+	var initStructuredJSON, editStructuredJSON []byte
 	if resume.InitialStructured != nil {
 		initStructuredJSON, _ = json.Marshal(resume.InitialStructured)
 	}
+	if resume.EditedStructured != nil {
+		editStructuredJSON, _ = json.Marshal(resume.EditedStructured)
+	}
 	now := time.Now()
 	err = tx.QueryRowContext(ctx, `
-		INSERT INTO resumes (id, filename, raw_text, pdf_data, extracted_skills, is_active, uploaded_at, initial_structured)
-		VALUES ($1, $2, $3, $4, $5, true, $6, $7)
+		INSERT INTO resumes (id, filename, raw_text, edited_text, pdf_data, extracted_skills, is_active, uploaded_at, initial_structured, edited_structured)
+		VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8, $9)
 		RETURNING id
-	`, resume.ID, resume.Filename, resume.RawText, resume.PDFBytes, skillsJSON, now, initStructuredJSON).Scan(&resume.ID)
+	`, resume.ID, resume.Filename, resume.RawText, existingEditedText, resume.PDFBytes, skillsJSON, now, initStructuredJSON, editStructuredJSON).Scan(&resume.ID)
 	if err != nil {
 		return err
 	}

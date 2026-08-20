@@ -138,5 +138,10 @@ func structuredToTextGo(sr *models.StructuredResume) string {
 		sb.WriteString("\n")
 	}
 
+	if len(sr.HighlightKeywords) > 0 {
+		sb.WriteString("HIGHLIGHTED KEYWORDS\n")
+		sb.WriteString(strings.Join(sr.HighlightKeywords, ", ") + "\n\n")
+	}
+
 	return strings.TrimSpace(sb.String())
 }

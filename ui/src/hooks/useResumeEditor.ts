@@ -28,55 +28,6 @@ export const useResumeEditor = (jobId?: string) => {
     setIsDirty(true);
   }, []);
 
-  // Send a chat message to the AI
-  const sendMessage = useCallback(async (userText: string, model?: string, customJd?: string, directCommand?: boolean) => {
-    if (!userText.trim() || isChatLoading || !canvasStructured) return;
-
-    const userMsg: ChatMessage = {
-      id: mkId(),
-      role: 'user',
-      content: userText,
-      timestamp: Date.now(),
-    };
-    setChatMessages(prev => [...prev, userMsg]);
-    setIsChatLoading(true);
-
-    try {
-      const response = await chatWithResume(userText, canvasStructured, jobId, model, customJd, directCommand);
-
-      const aiMsg: ChatMessage = {
-        id: mkId(),
-        role: 'assistant',
-        content: response.message,
-        proposedEdits: response.proposed_edits?.map((e: ProposedEdit) => ({ ...e })),
-        gapPrompts: response.gap_prompts?.map((g: GapQuestionPrompt) => ({ ...g })),
-        structuredResume: response.structured_resume,
-        timestamp: Date.now(),
-      };
-      setChatMessages(prev => [...prev, aiMsg]);
-    } catch (err: any) {
-      const errMsg: ChatMessage = {
-        id: mkId(),
-        role: 'assistant',
-        content: `⚠️ Error: ${err.response?.data?.error || err.message || 'Chat failed'}`,
-        timestamp: Date.now(),
-      };
-      setChatMessages(prev => [...prev, errMsg]);
-    } finally {
-      setIsChatLoading(false);
-    }
-  }, [canvasStructured, isChatLoading, jobId]);
-
-  // Answer a gap question — feed the answer back as a message
-  const answerGapQuestion = useCallback((skill: string, answer: 'yes' | 'no' | string) => {
-    const text = answer === 'yes'
-      ? `Yes, I have experience with ${skill}. Please add it to my resume.`
-      : answer === 'no'
-      ? `No, I don't have experience with ${skill}.`
-      : answer;
-    sendMessage(text);
-  }, [sendMessage]);
-
   // Auto-save editor content to backend
   const saveContent = useCallback(async (structuredOverride?: StructuredResume) => {
     const structToSave = structuredOverride || canvasStructured;
@@ -94,6 +45,74 @@ export const useResumeEditor = (jobId?: string) => {
       setIsSaving(false);
     }
   }, [canvasStructured, isSaving]);
+
+  // Send a chat message to the AI
+  const sendMessage = useCallback(async (userText: string, model?: string, customJd?: string, directCommand?: boolean) => {
+    if (!userText.trim() || isChatLoading || !canvasStructured) return;
+
+    const userMsg: ChatMessage = {
+      id: mkId(),
+      role: 'user',
+      content: userText,
+      timestamp: Date.now(),
+    };
+    setChatMessages(prev => [...prev, userMsg]);
+    setIsChatLoading(true);
+
+    try {
+      const response = await chatWithResume(userText, canvasStructured, jobId, model, customJd, directCommand);
+
+      let structRes = response.structured_resume;
+      if (structRes) {
+        const prevKeywords = canvasStructured?.highlight_keywords || [];
+        const newKeywords = structRes.highlight_keywords || [];
+        const mergedSet = new Set<string>();
+        prevKeywords.forEach(k => k && mergedSet.add(k));
+        newKeywords.forEach(k => k && mergedSet.add(k));
+        structRes = {
+          ...structRes,
+          highlight_keywords: Array.from(mergedSet),
+        };
+      }
+
+      const aiMsg: ChatMessage = {
+        id: mkId(),
+        role: 'assistant',
+        content: response.message,
+        proposedEdits: response.proposed_edits?.map((e: ProposedEdit) => ({ ...e })),
+        gapPrompts: response.gap_prompts?.map((g: GapQuestionPrompt) => ({ ...g })),
+        structuredResume: structRes,
+        timestamp: Date.now(),
+      };
+      setChatMessages(prev => [...prev, aiMsg]);
+
+      // If directCommand returned an updated structured resume, auto-apply to canvas
+      if (directCommand && structRes) {
+        applyStructured(structRes);
+        saveContent(structRes);
+      }
+    } catch (err: any) {
+      const errMsg: ChatMessage = {
+        id: mkId(),
+        role: 'assistant',
+        content: `⚠️ Error: ${err.response?.data?.error || err.message || 'Chat failed'}`,
+        timestamp: Date.now(),
+      };
+      setChatMessages(prev => [...prev, errMsg]);
+    } finally {
+      setIsChatLoading(false);
+    }
+  }, [canvasStructured, isChatLoading, jobId, applyStructured, saveContent]);
+
+  // Answer a gap question — feed the answer back as a message
+  const answerGapQuestion = useCallback((skill: string, answer: 'yes' | 'no' | string) => {
+    const text = answer === 'yes'
+      ? `Yes, I have experience with ${skill}. Please add it to my resume.`
+      : answer === 'no'
+      ? `No, I don't have experience with ${skill}.`
+      : answer;
+    sendMessage(text);
+  }, [sendMessage]);
 
   // Save an "applied" version snapshot
   const saveAsApplied = useCallback(async (params: {

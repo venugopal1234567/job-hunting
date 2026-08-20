@@ -86,6 +86,8 @@ Respond ONLY with a valid JSON object matching exactly this schema:
 CRITICAL RULES:
 - PRESERVE ALL work experience entries — never remove any company or job role.
 - Keep official job titles unchanged unless the instruction explicitly says to change them.
+- PRESERVE HIGHLIGHTS & BOLDING: You MUST preserve ALL existing highlighted text and bold markdown formatting (**keyword**) across summary, bullet points, and skills from the current resume.
+- PRESERVE ALL highlight_keywords in the "highlight_keywords" array. Retain all previously highlighted terms and append any newly added keywords.
 - structured_resume MUST always be populated (never null).
 - gap_prompts MUST be an empty array [].
 

@@ -82,6 +82,23 @@ func (c *Client) ChatWithResume(req *models.ChatRequest, jobContext string, mode
 	resp := parseChatResponse(rawResponse)
 	if resp != nil {
 		resp.ProposedEdits = []models.ProposedEdit{}
+
+		// Preserve and merge existing highlight keywords
+		if req.ResumeStructured != nil && len(req.ResumeStructured.HighlightKeywords) > 0 && resp.StructuredResume != nil {
+			existingSet := make(map[string]bool)
+			for _, kw := range resp.StructuredResume.HighlightKeywords {
+				if kw != "" {
+					existingSet[strings.ToLower(strings.TrimSpace(kw))] = true
+				}
+			}
+			for _, kw := range req.ResumeStructured.HighlightKeywords {
+				clean := strings.TrimSpace(kw)
+				if clean != "" && !existingSet[strings.ToLower(clean)] {
+					resp.StructuredResume.HighlightKeywords = append(resp.StructuredResume.HighlightKeywords, clean)
+					existingSet[strings.ToLower(clean)] = true
+				}
+			}
+		}
 	}
 	return resp, nil
 }

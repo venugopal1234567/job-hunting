@@ -168,10 +168,18 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
 
   const handleApplyFullResume = useCallback(async (replacement: string | object) => {
     if (typeof replacement === 'object' && replacement !== null) {
-      applyStructured(replacement as StructuredResume);
-      await saveContent(replacement as StructuredResume);
+      const newStruct = { ...(replacement as StructuredResume) };
+      const prevKeywords = canvasStructured?.highlight_keywords || [];
+      const newKeywords = newStruct.highlight_keywords || [];
+      const mergedSet = new Set<string>();
+      prevKeywords.forEach(k => k && mergedSet.add(k));
+      newKeywords.forEach(k => k && mergedSet.add(k));
+      newStruct.highlight_keywords = Array.from(mergedSet);
+
+      applyStructured(newStruct);
+      await saveContent(newStruct);
     }
-  }, [applyStructured, saveContent]);
+  }, [canvasStructured, applyStructured, saveContent]);
 
   const handleConvertToNewLayout = useCallback(async () => {
     setIsConvertingLayout(true);
@@ -225,7 +233,10 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
     try {
       const [contentData, meta] = await Promise.all([getResumeContent(), getActiveResume()]);
       if (contentData) {
-        initContent(contentData.structured, meta?.extracted_skills || []);
+        // Only initialize canvas if there was no active resume loaded
+        if (!canvasStructured && contentData.structured) {
+          initContent(contentData.structured, meta?.extracted_skills || []);
+        }
         setHasPDF(!!meta?.has_pdf);
         setNoResume(false);
       }
@@ -245,6 +256,9 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
       setUploadPhase('analyzing');
       await uploadResume(file);
       await handleResumeUploaded();
+      setSaveMessage('Base PDF updated! Working canvas preserved.');
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => setSaveMessage(''), 3500);
     } catch (err) {
       console.error(err);
       alert('Upload failed: ' + (err instanceof Error ? err.message : String(err)));
