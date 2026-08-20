@@ -1,5 +1,5 @@
 import React from 'react';
-import { RotateCcw, Download, PanelRightClose, PanelRight, CheckCircle2, Loader2, Sparkles } from 'lucide-react';
+import { RotateCcw, Download, Upload, PanelRightClose, PanelRight, CheckCircle2, Loader2, Sparkles } from 'lucide-react';
 import { Job } from '../../../types';
 import ATSScoreBar from '../ATSScoreBar';
 
@@ -42,6 +42,7 @@ export const ResumeEditorHeader: React.FC<ResumeEditorHeaderProps> = ({
   onExportPDF,
   chatVisible,
   onToggleChat,
+  onUploadClick,
   isConvertingLayout = false,
 }) => {
   return (
@@ -104,6 +105,17 @@ export const ResumeEditorHeader: React.FC<ResumeEditorHeaderProps> = ({
               <RotateCcw className="w-3.5 h-3.5" />
             )}
             {isReverting ? 'Reverting...' : isConvertingLayout ? 'Converting...' : 'Revert Original'}
+          </button>
+
+          {/* Upload Base PDF */}
+          <button
+            id="btn-upload-base-pdf"
+            onClick={onUploadClick}
+            className="px-3.5 py-1.5 rounded-full bg-surface-container text-on-surface-variant hover:text-primary hover:bg-surface-container-high border border-surface-variant text-xs font-semibold flex items-center gap-1.5 transition-all active:scale-95"
+            title="Upload a new base PDF resume"
+          >
+            <Upload className="w-3.5 h-3.5 text-primary" />
+            <span>Upload PDF</span>
           </button>
 
           {/* Export to PDF */}
