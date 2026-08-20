@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, RotateCcw, Download, PanelRightClose, PanelRight, CheckCircle2, Loader2 } from 'lucide-react';
+import { RotateCcw, Download, PanelRightClose, PanelRight, CheckCircle2, Loader2, Sparkles } from 'lucide-react';
 import { Job } from '../../../types';
 import ATSScoreBar from '../ATSScoreBar';
 
@@ -35,8 +35,6 @@ export const ResumeEditorHeader: React.FC<ResumeEditorHeaderProps> = ({
   saveMessage,
   activeSubTab,
   onSubTabChange,
-  fitToSinglePage,
-  onToggleFitToSinglePage,
   isSaving,
   isReverting,
   onRevert,
@@ -44,12 +42,11 @@ export const ResumeEditorHeader: React.FC<ResumeEditorHeaderProps> = ({
   onExportPDF,
   chatVisible,
   onToggleChat,
-  onConvertToNewLayout,
   isConvertingLayout = false,
 }) => {
   return (
-    <div className="glass rounded-xl border border-white/10 p-3 mb-4 no-print shadow-xl">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="bg-surface-container-lowest border border-surface-variant rounded-2xl p-4 mb-4 no-print shadow-elevation-1">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         {/* ATS Score Bar */}
         <div className="flex-1 min-w-[260px]">
           <ATSScoreBar
@@ -61,54 +58,52 @@ export const ResumeEditorHeader: React.FC<ResumeEditorHeaderProps> = ({
           />
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2.5 flex-wrap">
           {/* Status indicator */}
           {saveMessage && (
-            <span className="flex items-center gap-1 text-xs text-emerald-400 font-medium animate-fade-in mr-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> {saveMessage}
+            <span className="flex items-center gap-1 text-xs text-primary font-bold animate-fade-in mr-1">
+              <CheckCircle2 className="w-4 h-4 text-emerald-500" /> {saveMessage}
             </span>
           )}
 
           {/* Sub-tabs */}
-          <div className="flex items-center bg-surface-300 rounded-lg p-1 border border-white/5">
+          <div className="flex items-center bg-surface-container p-1 rounded-full border border-surface-variant">
             <button
               onClick={() => onSubTabChange('editor')}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all ${
+              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all ${
                 activeSubTab === 'editor'
-                  ? 'bg-indigo-600 text-white shadow-md'
-                  : 'text-gray-400 hover:text-white'
+                  ? 'bg-primary text-on-primary shadow-sm'
+                  : 'text-on-surface-variant hover:text-primary'
               }`}
             >
-              ✏️ Visual Canvas
+              <span>✏️ Visual Canvas</span>
             </button>
             <button
               onClick={() => onSubTabChange('pdf')}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all ${
+              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all ${
                 activeSubTab === 'pdf'
-                  ? 'bg-indigo-600 text-white shadow-md'
-                  : 'text-gray-400 hover:text-white'
+                  ? 'bg-primary text-on-primary shadow-sm'
+                  : 'text-on-surface-variant hover:text-primary'
               }`}
             >
-              📄 Original PDF
+              <span>📄 Original PDF</span>
             </button>
           </div>
 
-
-
-          {/* Revert button (converts original resume text into standard 1-page layout) */}
+          {/* Revert button */}
           <button
             id="btn-revert-resume"
             onClick={onRevert}
             disabled={isSaving || isReverting || isConvertingLayout}
-            className="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/20 text-xs font-medium flex items-center gap-1.5 disabled:opacity-40 transition-all"
-            title="Revert all edits back to original resume text formatted in standard 1-page layout"
+            className="px-3.5 py-1.5 rounded-full bg-secondary-fixed text-on-secondary-fixed hover:bg-secondary-fixed-dim border border-secondary-fixed-dim/40 text-xs font-semibold flex items-center gap-1.5 disabled:opacity-40 transition-all active:scale-95"
+            title="Revert all edits back to original resume text"
           >
-          {isReverting || isConvertingLayout ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-300" />
+            {isReverting || isConvertingLayout ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-secondary" />
             ) : (
               <RotateCcw className="w-3.5 h-3.5" />
             )}
-            {isReverting ? 'Reverting...' : isConvertingLayout ? 'Converting Layout...' : 'Revert/get original page'}
+            {isReverting ? 'Reverting...' : isConvertingLayout ? 'Converting...' : 'Revert Original'}
           </button>
 
           {/* Export to PDF */}
@@ -116,8 +111,8 @@ export const ResumeEditorHeader: React.FC<ResumeEditorHeaderProps> = ({
             id="btn-export-pdf"
             onClick={onExportPDF}
             disabled={exportingPDF}
-            className="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-indigo-600/30 disabled:opacity-50 transition-all"
-            title="Export clean PDF file directly via backend API"
+            className="btn-primary text-xs py-1.5 px-4 flex items-center gap-1.5"
+            title="Export clean PDF file"
           >
             {exportingPDF ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
@@ -131,18 +126,19 @@ export const ResumeEditorHeader: React.FC<ResumeEditorHeaderProps> = ({
           <button
             id="btn-toggle-chat"
             onClick={onToggleChat}
-            className={`p-2 px-3 rounded-lg text-xs font-medium border flex items-center gap-1.5 transition-all ${
+            className={`py-1.5 px-3.5 rounded-full text-xs font-semibold border flex items-center gap-1.5 transition-all ${
               chatVisible
-                ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
-                : 'bg-surface-200 text-gray-300 border-white/5 hover:bg-surface-300'
+                ? 'bg-primary-fixed text-on-primary-fixed border-primary-fixed-dim'
+                : 'bg-surface-container text-on-surface-variant border-surface-variant hover:bg-surface-container-high'
             }`}
             title={chatVisible ? 'Hide AI Resume Coach' : 'Show AI Resume Coach'}
           >
             {chatVisible ? <PanelRightClose className="w-4 h-4" /> : <PanelRight className="w-4 h-4" />}
-            <span>AI Resume Coach</span>
+            <span>AI Coach</span>
           </button>
         </div>
       </div>
     </div>
   );
 };
+

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ExternalLink, MapPin, DollarSign, ChevronRight, Calendar, FileEdit } from 'lucide-react';
+import { ExternalLink, MapPin, DollarSign, ChevronRight, Calendar, Sparkles } from 'lucide-react';
 import { Job } from '../../types';
 
 interface JobCardProps {
@@ -9,27 +9,41 @@ interface JobCardProps {
 }
 
 const SOURCE_COLORS: Record<string, string> = {
-  golangprojects: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
-  hnhiring: 'bg-orange-500/20 text-orange-300 border-orange-500/30',
-  weworkremotely: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
-  builtin: 'bg-green-500/20 text-green-300 border-green-500/30',
-  welcometothejungle: 'bg-pink-500/20 text-pink-300 border-pink-500/30',
-  googlejobs: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-  remoterocketship: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
-  linkedin: 'bg-sky-500/20 text-sky-300 border-sky-500/30',
-  glassdoor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+  golangprojects: 'bg-primary-fixed text-on-primary-fixed border-primary-fixed-dim/40',
+  hnhiring: 'bg-secondary-fixed text-on-secondary-fixed border-secondary-fixed-dim/40',
+  weworkremotely: 'bg-primary-fixed text-on-primary-fixed border-primary-fixed-dim/40',
+  builtin: 'bg-tertiary-fixed text-on-tertiary-fixed border-tertiary-fixed-dim/40',
+  welcometothejungle: 'bg-secondary-fixed text-on-secondary-fixed border-secondary-fixed-dim/40',
+  googlejobs: 'bg-primary-fixed text-on-primary-fixed border-primary-fixed-dim/40',
+  remoterocketship: 'bg-tertiary-fixed text-on-tertiary-fixed border-tertiary-fixed-dim/40',
+  linkedin: 'bg-primary-fixed text-on-primary-fixed border-primary-fixed-dim/40',
+  glassdoor: 'bg-tertiary-fixed text-on-tertiary-fixed border-tertiary-fixed-dim/40',
+  naukri: 'bg-secondary-fixed text-on-secondary-fixed border-secondary-fixed-dim/40',
 };
 
+const AVATAR_BG = [
+  'bg-primary text-on-primary',
+  'bg-secondary text-on-secondary',
+  'bg-tertiary text-on-tertiary',
+  'bg-primary-container text-on-primary',
+  'bg-secondary-container text-on-secondary-container',
+  'bg-tertiary-container text-on-tertiary-container',
+];
+
 const ATS_COLOR = (score: number) => {
-  if (score >= 80) return { ring: 'stroke-emerald-400', text: 'text-emerald-400', bg: 'bg-emerald-400' };
-  if (score >= 60) return { ring: 'stroke-amber-400', text: 'text-amber-400', bg: 'bg-amber-400' };
-  return { ring: 'stroke-red-400', text: 'text-red-400', bg: 'bg-red-400' };
+  if (score >= 80) return { ring: 'stroke-primary', text: 'text-primary' };
+  if (score >= 60) return { ring: 'stroke-secondary', text: 'text-secondary' };
+  return { ring: 'stroke-outline', text: 'text-on-surface-variant' };
 };
 
 const JobCard: React.FC<JobCardProps> = ({ job, onClick, onEditResume }) => {
   const hasAts = job.ats_score !== null && job.ats_score !== undefined;
   const atsColor = hasAts ? ATS_COLOR(job.ats_score!) : null;
-  const sourceColorClass = SOURCE_COLORS[job.source_board] || 'bg-gray-500/20 text-gray-300 border-gray-500/30';
+  const sourceColorClass = SOURCE_COLORS[job.source_board] || 'bg-surface-container text-on-surface border-surface-variant';
+
+  // Deterministic avatar color based on company name
+  const avatarIndex = (job.company || 'A').charCodeAt(0) % AVATAR_BG.length;
+  const avatarBgClass = AVATAR_BG[avatarIndex];
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return null;
@@ -46,74 +60,75 @@ const JobCard: React.FC<JobCardProps> = ({ job, onClick, onEditResume }) => {
   return (
     <div
       id={`job-card-${job.id}`}
-      className="glass-hover rounded-xl p-5 cursor-pointer group animate-slide-up"
+      className="bg-surface-container-lowest border border-surface-variant rounded-2xl p-5 sm:p-6 cursor-pointer group shadow-elevation-1 hover:shadow-elevation-2 hover:border-primary/40 transition-all duration-200 flex flex-col justify-between animate-slide-up"
       onClick={() => onClick(job)}
     >
-      <div className="flex items-start justify-between gap-3">
-        {/* Company avatar placeholder */}
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-surface-300 to-surface-400 flex items-center justify-center flex-shrink-0 text-xs font-bold text-gray-400 border border-white/5">
-          {job.company.charAt(0).toUpperCase()}
+      <div>
+        {/* Card Header with Avatar & Title */}
+        <div className="flex items-start justify-between gap-3.5">
+          {/* Company letter avatar */}
+          <div className={`w-11 h-11 rounded-full ${avatarBgClass} flex items-center justify-center flex-shrink-0 text-sm font-bold shadow-sm`}>
+            {job.company.charAt(0).toUpperCase()}
+          </div>
+
+          {/* Job info */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between gap-2">
+              <h3 className="text-base font-bold font-headline text-on-surface group-hover:text-primary transition-colors leading-snug line-clamp-2">
+                {job.title}
+              </h3>
+              <ChevronRight className="w-4 h-4 text-outline group-hover:text-primary flex-shrink-0 mt-1 transition-colors" />
+            </div>
+            <p className="text-xs font-medium text-on-surface-variant mt-0.5">{job.company}</p>
+          </div>
+
+          {/* ATS Score ring */}
+          {hasAts && atsColor && (
+            <div className="flex-shrink-0 flex flex-col items-center">
+              <svg width="42" height="42" className="-rotate-90">
+                <circle cx="21" cy="21" r="15" fill="none" stroke="#ededf2" strokeWidth="3" />
+                <circle
+                  cx="21" cy="21" r="15"
+                  fill="none"
+                  className={`${atsColor.ring} transition-all duration-700`}
+                  strokeWidth="3"
+                  strokeDasharray={circumference}
+                  strokeDashoffset={offset}
+                  strokeLinecap="round"
+                />
+              </svg>
+              <span className={`text-[10px] font-bold ${atsColor.text} -mt-1`}>{job.ats_score}%</span>
+            </div>
+          )}
         </div>
 
-        {/* Job info */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <h3 className="text-sm font-semibold text-white group-hover:text-brand-300 transition-colors leading-snug line-clamp-2">
-              {job.title}
-            </h3>
-            <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-brand-400 flex-shrink-0 mt-0.5 transition-colors" />
-          </div>
-          <p className="text-xs text-gray-400 mt-0.5">{job.company}</p>
+        {/* Meta badges row */}
+        <div className="flex flex-wrap items-center gap-2 mt-4">
+          {job.location && (
+            <span className="bg-surface-container text-on-surface px-2.5 py-1 rounded-full text-[11px] font-medium flex items-center gap-1">
+              <MapPin className="w-3 h-3 text-on-surface-variant" />
+              {job.location}
+            </span>
+          )}
+          {job.salary_range && (
+            <span className="bg-surface-container text-on-surface px-2.5 py-1 rounded-full text-[11px] font-medium flex items-center gap-1">
+              <DollarSign className="w-3 h-3 text-on-surface-variant" />
+              {job.salary_range}
+            </span>
+          )}
+          <span className={`border text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${sourceColorClass}`}>
+            {job.source_board}
+          </span>
+          {job.posted_at && (
+            <span className="flex items-center gap-1 text-[11px] text-on-surface-variant ml-auto font-medium">
+              <Calendar className="w-3 h-3" />
+              {formatDate(job.posted_at)}
+            </span>
+          )}
         </div>
 
-        {/* ATS Score ring */}
-        {hasAts && atsColor && (
-          <div className="flex-shrink-0 flex flex-col items-center">
-            <svg width="42" height="42" className="-rotate-90">
-              <circle cx="21" cy="21" r="15" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="3" />
-              <circle
-                cx="21" cy="21" r="15"
-                fill="none"
-                className={`${atsColor.ring} transition-all duration-700`}
-                strokeWidth="3"
-                strokeDasharray={circumference}
-                strokeDashoffset={offset}
-                strokeLinecap="round"
-              />
-            </svg>
-            <span className={`text-[10px] font-bold ${atsColor.text} -mt-1`}>{job.ats_score}%</span>
-          </div>
-        )}
-      </div>
-
-      {/* Meta row */}
-      <div className="flex flex-wrap items-center gap-2 mt-3">
-        {job.location && (
-          <span className="flex items-center gap-1 text-[11px] text-gray-500">
-            <MapPin className="w-3 h-3" />
-            {job.location}
-          </span>
-        )}
-        {job.salary_range && (
-          <span className="flex items-center gap-1 text-[11px] text-gray-500">
-            <DollarSign className="w-3 h-3" />
-            {job.salary_range}
-          </span>
-        )}
-        <span className={`border text-[10px] font-medium px-1.5 py-0.5 rounded-full ${sourceColorClass}`}>
-          {job.source_board}
-        </span>
-        {job.posted_at && (
-          <span className="flex items-center gap-1 text-[11px] text-gray-600 ml-auto">
-            <Calendar className="w-3 h-3" />
-            {formatDate(job.posted_at)}
-          </span>
-        )}
-      </div>
-
-      {/* Card Footer with Skills & Direct Apply Link */}
-      <div className="flex flex-wrap items-center justify-between gap-2 mt-3 pt-3 border-t border-white/5">
-        <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
+        {/* Matched / Missing skills */}
+        <div className="flex flex-wrap gap-1.5 mt-3.5">
           {job.matched_skills?.slice(0, 3).map(skill => (
             <span key={skill} className="skill-pill-green">{skill}</span>
           ))}
@@ -121,30 +136,33 @@ const JobCard: React.FC<JobCardProps> = ({ job, onClick, onEditResume }) => {
             <span key={skill} className="skill-pill-amber">{skill}</span>
           ))}
         </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          {onEditResume && (
-            <button
-              id={`btn-card-edit-resume-${job.id}`}
-              onClick={(e) => { e.stopPropagation(); onEditResume(job); }}
-              className="text-[11px] font-semibold text-purple-300 hover:text-white bg-purple-600/20 hover:bg-purple-600/40 border border-purple-500/30 px-2.5 py-1 rounded-lg transition-all flex items-center gap-1"
-              title="Tailor your resume for this job"
-            >
-              <FileEdit className="w-3 h-3" /> Tailor
-            </button>
-          )}
-          <a
-            href={job.source_url}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="text-[11px] font-semibold text-brand-300 hover:text-white bg-brand-600/20 hover:bg-brand-600/50 border border-brand-500/30 px-2.5 py-1 rounded-lg transition-all flex items-center gap-1"
+      </div>
+
+      {/* Card Action Buttons */}
+      <div className="flex items-center gap-2.5 mt-5 pt-4 border-t border-surface-variant">
+        {onEditResume && (
+          <button
+            id={`btn-card-edit-resume-${job.id}`}
+            onClick={(e) => { e.stopPropagation(); onEditResume(job); }}
+            className="flex-1 bg-primary text-on-primary hover:bg-primary-container rounded-full py-2.5 px-4 text-xs font-semibold flex items-center justify-center gap-1.5 shadow-elevation-1 hover:shadow-elevation-2 transition-all active:scale-95"
+            title="Tailor your resume for this job"
           >
-            Apply <ExternalLink className="w-3 h-3" />
-          </a>
-        </div>
+            <Sparkles className="w-3.5 h-3.5" /> Tailor
+          </button>
+        )}
+        <a
+          href={job.source_url}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="flex-1 bg-surface-container-lowest border border-outline text-on-surface hover:bg-surface-container rounded-full py-2.5 px-4 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all active:scale-95"
+        >
+          Apply <ExternalLink className="w-3.5 h-3.5" />
+        </a>
       </div>
     </div>
   );
 };
 
 export default JobCard;
+

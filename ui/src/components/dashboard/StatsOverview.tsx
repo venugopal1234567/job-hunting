@@ -14,49 +14,54 @@ const StatsOverview: React.FC<StatsOverviewProps> = ({ total, highAts, skillCoun
       label: 'Total Jobs',
       value: total,
       icon: Briefcase,
-      color: 'text-brand-400',
-      bg: 'bg-brand-500/10',
-      border: 'border-brand-500/20',
+      color: 'text-primary',
+      iconBg: 'bg-primary-fixed text-on-primary-fixed',
+      borderColor: 'border-surface-variant',
     },
     {
       label: 'High ATS Match (>80%)',
       value: highAts,
       icon: Star,
-      color: 'text-amber-400',
-      bg: 'bg-amber-500/10',
-      border: 'border-amber-500/20',
+      color: 'text-secondary',
+      iconBg: 'bg-secondary-fixed text-on-secondary-fixed',
+      borderColor: 'border-surface-variant',
     },
     {
       label: 'Active Skills',
       value: skillCount,
       icon: TrendingUp,
-      color: 'text-emerald-400',
-      bg: 'bg-emerald-500/10',
-      border: 'border-emerald-500/20',
+      color: 'text-tertiary',
+      iconBg: 'bg-tertiary-fixed text-on-tertiary-fixed',
+      borderColor: 'border-surface-variant',
     },
     {
       label: 'Last Scrape',
       value: lastScrape ? formatRelative(lastScrape) : 'Never',
       icon: Clock,
-      color: 'text-purple-400',
-      bg: 'bg-purple-500/10',
-      border: 'border-purple-500/20',
+      color: 'text-on-surface-variant',
+      iconBg: 'bg-surface-container-highest text-on-surface-variant',
+      borderColor: 'border-surface-variant',
     },
   ];
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6">
       {stats.map((stat) => {
         const Icon = stat.icon;
         return (
-          <div key={stat.label} className={`stat-card border ${stat.border} animate-fade-in`}>
+          <div
+            key={stat.label}
+            className={`bg-surface-container-lowest border ${stat.borderColor} rounded-2xl p-5 sm:p-6 shadow-elevation-1 flex flex-col justify-between hover:shadow-elevation-2 transition-all duration-200 animate-fade-in`}
+          >
             <div className="flex items-center justify-between">
-              <span className="section-header mb-0">{stat.label}</span>
-              <div className={`${stat.bg} ${stat.border} border rounded-lg p-1.5`}>
-                <Icon className={`w-3.5 h-3.5 ${stat.color}`} />
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">
+                {stat.label}
+              </span>
+              <div className={`${stat.iconBg} rounded-full p-2.5 flex items-center justify-center`}>
+                <Icon className="w-4 h-4" />
               </div>
             </div>
-            <div className={`text-2xl font-bold ${stat.color}`}>
+            <div className={`text-3xl sm:text-4xl font-bold font-headline mt-3 ${stat.color}`}>
               {typeof stat.value === 'number' ? stat.value.toLocaleString() : stat.value}
             </div>
           </div>
@@ -77,3 +82,4 @@ function formatRelative(dateStr: string): string {
 }
 
 export default StatsOverview;
+

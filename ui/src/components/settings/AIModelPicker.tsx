@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   Cpu, RefreshCw, CheckCircle2, Loader2, AlertTriangle,
-  ChevronRight, Zap, HardDrive, Clock
+  ChevronRight, Sparkles, HardDrive, Clock
 } from 'lucide-react';
 import { getAISettings, updateAISettings, getAIModels, NvidiaModel, AISettings } from '../../services/api';
 
@@ -25,15 +25,15 @@ const formatAge = (isoDate: string): string => {
 };
 
 const familyColor: Record<string, string> = {
-  nvidia:   'bg-emerald-500/15 text-emerald-300 border-emerald-500/20',
-  openai:   'bg-violet-500/15 text-violet-300 border-violet-500/20',
-  meta:     'bg-blue-500/15 text-blue-300 border-blue-500/20',
-  mistral:  'bg-amber-500/15 text-amber-300 border-amber-500/20',
-  google:   'bg-pink-500/15 text-pink-300 border-pink-500/20',
-  deepseek: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/20',
-  minimax:  'bg-orange-500/15 text-orange-300 border-orange-500/20',
-  qwen:     'bg-teal-500/15 text-teal-300 border-teal-500/20',
-  'z-ai':   'bg-purple-500/15 text-purple-300 border-purple-500/20',
+  nvidia:   'bg-primary-fixed text-on-primary-fixed border-primary-fixed-dim/40',
+  openai:   'bg-primary-fixed text-on-primary-fixed border-primary-fixed-dim/40',
+  meta:     'bg-secondary-fixed text-on-secondary-fixed border-secondary-fixed-dim/40',
+  mistral:  'bg-secondary-fixed text-on-secondary-fixed border-secondary-fixed-dim/40',
+  google:   'bg-tertiary-fixed text-on-tertiary-fixed border-tertiary-fixed-dim/40',
+  deepseek: 'bg-tertiary-fixed text-on-tertiary-fixed border-tertiary-fixed-dim/40',
+  minimax:  'bg-secondary-fixed text-on-secondary-fixed border-secondary-fixed-dim/40',
+  qwen:     'bg-tertiary-fixed text-on-tertiary-fixed border-tertiary-fixed-dim/40',
+  'z-ai':   'bg-primary-fixed text-on-primary-fixed border-primary-fixed-dim/40',
 };
 
 const getFamilyClass = (model: NvidiaModel): string => {
@@ -41,7 +41,7 @@ const getFamilyClass = (model: NvidiaModel): string => {
   for (const [key, cls] of Object.entries(familyColor)) {
     if (family.includes(key)) return cls;
   }
-  return 'bg-gray-500/15 text-gray-300 border-gray-500/20';
+  return 'bg-surface-container text-on-surface-variant border-surface-variant';
 };
 
 const getFamilyLabel = (model: NvidiaModel): string => {
@@ -63,7 +63,7 @@ const AIModelPicker: React.FC = () => {
     try {
       const s = await getAISettings();
       setSettings(s);
-    } catch (e: any) {
+    } catch {
       setError('Could not reach backend — make sure the Go server is running.');
     } finally {
       setLoading(false);
@@ -104,8 +104,8 @@ const AIModelPicker: React.FC = () => {
   if (loading) {
     return (
       <div className="flex items-center gap-2 py-6 justify-center">
-        <Loader2 className="w-4 h-4 text-brand-400 animate-spin" />
-        <span className="text-xs text-gray-400">Loading AI settings...</span>
+        <Loader2 className="w-5 h-5 text-primary animate-spin" />
+        <span className="text-xs text-on-surface-variant font-medium">Loading AI settings...</span>
       </div>
     );
   }
@@ -115,51 +115,48 @@ const AIModelPicker: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-violet-500/20 border border-violet-500/30 flex items-center justify-center">
-            <Cpu className="w-4 h-4 text-violet-400" />
+          <div className="w-8 h-8 rounded-full bg-primary-fixed text-primary flex items-center justify-center">
+            <Cpu className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-white">AI Model</h3>
-            <p className="text-[10px] text-gray-500 mt-0.5">Select which NVIDIA NIM cloud model powers the resume coach</p>
+            <h3 className="text-base font-bold font-headline text-on-surface">AI Model</h3>
+            <p className="text-xs text-on-surface-variant mt-0.5">Select which NVIDIA NIM cloud model powers the resume coach</p>
           </div>
         </div>
         <button
           onClick={handleRefreshModels}
           disabled={refreshing}
-          className="btn-ghost text-[10px] flex items-center gap-1.5 px-2 py-1"
+          className="btn-ghost text-xs flex items-center gap-1.5 px-3 py-1.5"
           title="Refresh model list from NVIDIA API"
           id="btn-refresh-models"
         >
-          <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
           Refresh
         </button>
       </div>
 
       {/* Active Model Badge */}
       {settings?.active_model && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-brand-500/10 border border-brand-500/20">
-          <span className="w-2 h-2 rounded-full bg-brand-400 animate-pulse-slow flex-shrink-0" />
-          <span className="text-[10px] text-gray-400 flex-shrink-0">Active:</span>
-          <span className="text-xs font-mono text-brand-300 truncate">{settings.active_model}</span>
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-primary-fixed/40 border border-primary-fixed-dim/60">
+          <span className="w-2 h-2 rounded-full bg-primary animate-pulse-slow flex-shrink-0" />
+          <span className="text-xs font-semibold text-on-surface-variant flex-shrink-0">Active:</span>
+          <span className="text-xs font-bold text-primary truncate">{settings.active_model}</span>
         </div>
       )}
 
       {/* Error */}
       {error && (
-        <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-red-500/10 border border-red-500/20">
-          <AlertTriangle className="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" />
-          <p className="text-[10px] text-red-300 leading-relaxed">{error}</p>
+        <div className="flex items-start gap-2 px-4 py-3 rounded-2xl bg-error-container text-on-error-container border border-error/20">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <p className="text-xs leading-relaxed">{error}</p>
         </div>
       )}
 
       {/* Model List */}
-      <div className="space-y-2">
+      <div className="space-y-2.5">
         {!settings?.available_models?.length ? (
           <div className="text-center py-8 space-y-2">
-            <p className="text-xs text-gray-500">No local Ollama models found.</p>
-            <p className="text-[10px] text-gray-600">
-              Pull a model with: <code className="font-mono bg-white/5 px-1 rounded">ollama pull gemma3</code>
-            </p>
+            <p className="text-xs text-on-surface-variant">No models found.</p>
           </div>
         ) : (
           settings.available_models.map(model => {
@@ -174,10 +171,10 @@ const AIModelPicker: React.FC = () => {
                 onClick={() => handleSelectModel(model.name)}
                 disabled={!!saving}
                 className={`
-                  w-full text-left px-4 py-3 rounded-xl border transition-all duration-200 group
+                  w-full text-left px-4 py-3.5 rounded-2xl border transition-all duration-200 group
                   ${isActive
-                    ? 'bg-brand-500/10 border-brand-500/30 shadow-sm shadow-brand-500/10'
-                    : 'glass border-white/5 hover:border-white/15 hover:bg-white/5'
+                    ? 'bg-primary-fixed/30 border-primary shadow-elevation-1'
+                    : 'bg-surface-container-low border-surface-variant hover:border-outline-variant hover:bg-surface-container'
                   }
                 `}
               >
@@ -185,20 +182,20 @@ const AIModelPicker: React.FC = () => {
                   {/* Left: name + tags */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-xs font-mono font-medium truncate ${isActive ? 'text-brand-200' : 'text-white'}`}>
+                      <span className={`text-xs font-semibold truncate ${isActive ? 'text-primary' : 'text-on-surface'}`}>
                         {model.name}
                       </span>
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded border font-medium uppercase tracking-wide ${getFamilyClass(model)}`}>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold uppercase tracking-wider ${getFamilyClass(model)}`}>
                         {getFamilyLabel(model)}
                       </span>
                     </div>
                     <div className="flex items-center gap-3 mt-1.5">
-                      <span className="flex items-center gap-1 text-[10px] text-gray-500">
-                        <HardDrive className="w-2.5 h-2.5" />
+                      <span className="flex items-center gap-1 text-[11px] text-on-surface-variant">
+                        <HardDrive className="w-3 h-3" />
                         {formatSize(model.size)}
                       </span>
-                      <span className="flex items-center gap-1 text-[10px] text-gray-500">
-                        <Clock className="w-2.5 h-2.5" />
+                      <span className="flex items-center gap-1 text-[11px] text-on-surface-variant">
+                        <Clock className="w-3 h-3" />
                         {formatAge(model.modified_at)}
                       </span>
                     </div>
@@ -207,16 +204,16 @@ const AIModelPicker: React.FC = () => {
                   {/* Right: status icon */}
                   <div className="flex-shrink-0">
                     {isSaving ? (
-                      <Loader2 className="w-4 h-4 text-brand-400 animate-spin" />
+                      <Loader2 className="w-4 h-4 text-primary animate-spin" />
                     ) : isSaved ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                     ) : isActive ? (
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] text-brand-400 font-medium">Active</span>
-                        <Zap className="w-3.5 h-3.5 text-brand-400" />
+                      <div className="flex items-center gap-1.5 bg-primary text-on-primary px-3 py-1 rounded-full text-xs font-semibold shadow-sm">
+                        <span>Active</span>
+                        <Sparkles className="w-3 h-3 text-white" />
                       </div>
                     ) : (
-                      <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-gray-400 transition-colors" />
+                      <ChevronRight className="w-4 h-4 text-outline group-hover:text-on-surface transition-colors" />
                     )}
                   </div>
                 </div>
@@ -225,15 +222,9 @@ const AIModelPicker: React.FC = () => {
           })
         )}
       </div>
-
-      {/* Footer hint */}
-      <p className="text-[10px] text-gray-600 text-center pt-1">
-        Pull new models via{' '}
-        <code className="font-mono bg-white/5 px-1 rounded text-gray-400">ollama pull &lt;model&gt;</code>
-        {' '}then click Refresh
-      </p>
     </div>
   );
 };
 
 export default AIModelPicker;
+

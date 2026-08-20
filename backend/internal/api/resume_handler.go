@@ -2,7 +2,6 @@ package api
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"net/http"
 	"path/filepath"
@@ -115,7 +114,10 @@ func (h *Handler) GetActiveResumePDF(c *gin.Context) {
 
 	if len(resObj.PDFBytes) > 0 {
 		c.Header("Content-Type", "application/pdf")
-		c.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", resObj.Filename))
+		c.Header("Content-Disposition", "inline; filename=\"resume.pdf\"")
+		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+		c.Header("Pragma", "no-cache")
+		c.Header("Expires", "0")
 		c.Data(http.StatusOK, "application/pdf", resObj.PDFBytes)
 		return
 	}
@@ -140,7 +142,10 @@ func (h *Handler) GetActiveResumePDF(c *gin.Context) {
 	}
 
 	c.Header("Content-Type", "application/pdf")
-	c.Header("Content-Disposition", "inline; filename=\"Active_Resume.pdf\"")
+	c.Header("Content-Disposition", "inline; filename=\"resume.pdf\"")
+	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+	c.Header("Pragma", "no-cache")
+	c.Header("Expires", "0")
 	c.Data(http.StatusOK, "application/pdf", pdfBytes)
 }
 

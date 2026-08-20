@@ -22,9 +22,9 @@ const ATSScoreBar: React.FC<ATSScoreBarProps> = ({
   const offset = hasScore ? circumference - (atsScore / 100) * circumference : circumference;
 
   const scoreColor = (s: number) => {
-    if (s >= 80) return { stroke: '#34d399', text: 'text-emerald-400', bg: 'from-emerald-500/20 to-emerald-500/5', border: 'border-emerald-500/20' };
-    if (s >= 60) return { stroke: '#fbbf24', text: 'text-amber-400', bg: 'from-amber-500/20 to-amber-500/5', border: 'border-amber-500/20' };
-    return { stroke: '#f87171', text: 'text-red-400', bg: 'from-red-500/20 to-red-500/5', border: 'border-red-500/20' };
+    if (s >= 80) return { stroke: '#4800b2', text: 'text-primary', bg: 'bg-primary-fixed/40', border: 'border-primary-fixed-dim/50' };
+    if (s >= 60) return { stroke: '#9e4039', text: 'text-secondary', bg: 'bg-secondary-fixed/40', border: 'border-secondary-fixed-dim/50' };
+    return { stroke: '#7a7488', text: 'text-on-surface-variant', bg: 'bg-surface-container', border: 'border-surface-variant' };
   };
 
   const colors = scoreColor(atsScore);
@@ -34,39 +34,38 @@ const ATSScoreBar: React.FC<ATSScoreBarProps> = ({
     : null;
 
   return (
-    <div id="ats-score-bar" className={`flex items-center gap-4 px-4 py-2.5 rounded-xl border bg-gradient-to-r ${colors.bg} ${colors.border}`}>
+    <div id="ats-score-bar" className={`flex items-center gap-3.5 px-4 py-2 rounded-2xl border ${colors.bg} ${colors.border}`}>
       {/* Circular gauge */}
       <div className="relative flex-shrink-0">
         {loading ? (
-          <div className="w-14 h-14 flex items-center justify-center">
-            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" />
+          <div className="w-12 h-12 flex items-center justify-center">
+            <Loader2 className="w-5 h-5 text-primary animate-spin" />
           </div>
         ) : (
           <>
-            <svg width="56" height="56" className="-rotate-90">
-              <circle cx="28" cy="28" r="28" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="5" />
+            <svg width="48" height="48" className="-rotate-90">
+              <circle cx="24" cy="24" r="20" fill="none" stroke="#ededf2" strokeWidth="4" />
               {hasScore && (
                 <circle
-                  cx="28" cy="28" r="28"
+                  cx="24" cy="24" r="20"
                   fill="none"
                   stroke={colors.stroke}
-                  strokeWidth="5"
-                  strokeDasharray={circumference}
-                  strokeDashoffset={offset}
+                  strokeWidth="4"
+                  strokeDasharray={2 * Math.PI * 20}
+                  strokeDashoffset={2 * Math.PI * 20 - (atsScore / 100) * (2 * Math.PI * 20)}
                   strokeLinecap="round"
-                  className="transition-all duration-1000 gauge-ring"
-                  style={{ '--target-offset': offset } as React.CSSProperties}
+                  className="transition-all duration-1000"
                 />
               )}
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
               {hasScore ? (
                 <>
-                  <span className={`text-base font-bold leading-none ${colors.text}`}>{atsScore}</span>
-                  <span className="text-[8px] text-gray-500 mt-0.5">ATS</span>
+                  <span className={`text-sm font-bold leading-none font-headline ${colors.text}`}>{atsScore}</span>
+                  <span className="text-[7px] text-on-surface-variant uppercase font-bold mt-0.5">ATS</span>
                 </>
               ) : (
-                <Cpu className="w-4 h-4 text-gray-600" />
+                <Cpu className="w-4 h-4 text-outline" />
               )}
             </div>
           </>
@@ -76,7 +75,7 @@ const ATSScoreBar: React.FC<ATSScoreBarProps> = ({
       {/* Labels */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <p className="text-xs font-semibold text-white">
+          <p className="text-xs font-bold text-on-surface">
             {hasScore
               ? atsScore >= 80 ? 'Strong Match' : atsScore >= 60 ? 'Good Match' : 'Needs Work'
               : 'No ATS Score'
@@ -84,35 +83,33 @@ const ATSScoreBar: React.FC<ATSScoreBarProps> = ({
           </p>
           {/* Delta */}
           {delta !== null && delta !== 0 && (
-            <span className={`text-[10px] font-bold flex items-center gap-0.5 ${delta > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            <span className={`text-[10px] font-bold flex items-center gap-0.5 ${delta > 0 ? 'text-primary' : 'text-secondary'}`}>
               {delta > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
               {delta > 0 ? '+' : ''}{delta} pts
             </span>
           )}
           {delta === 0 && previousScore !== null && (
-            <span className="text-[10px] text-gray-500 flex items-center gap-0.5">
+            <span className="text-[10px] text-on-surface-variant flex items-center gap-0.5">
               <Minus className="w-3 h-3" /> no change
             </span>
           )}
         </div>
         {jobTitle && (
-          <p className="text-[10px] text-gray-500 truncate mt-0.5">For: {jobTitle}</p>
-        )}
-        {!hasScore && !loading && (
-          <p className="text-[10px] text-gray-500 mt-0.5">Select a job to see ATS score</p>
+          <p className="text-[10px] text-on-surface-variant truncate mt-0.5">For: {jobTitle}</p>
         )}
       </div>
 
-      {/* Re-analyze button */}
+      {/* Reanalyze button */}
       {onReanalyze && (
         <button
           id="btn-reanalyze-ats"
           onClick={onReanalyze}
           disabled={loading}
-          title="Re-calculate ATS score"
-          className="btn-ghost p-1.5 flex-shrink-0 text-gray-500 hover:text-brand-400"
+          className="btn-ghost text-xs px-2.5 py-1 flex items-center gap-1 rounded-full text-primary hover:bg-primary-fixed/50"
+          title="Recalculate ATS score against current resume"
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
+          <span className="hidden sm:inline text-[11px] font-medium">Re-check</span>
         </button>
       )}
     </div>

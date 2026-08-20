@@ -38,88 +38,89 @@ export const ResumeCanvasPane: React.FC<ResumeCanvasPaneProps> = ({
   const lastRenderedKey = useRef<string>('');
 
   useEffect(() => {
+    if (activeSubTab !== 'editor') {
+      lastRenderedKey.current = '';
+      return;
+    }
+
     const canvas = canvasRef.current;
     if (!canvas || !canvasStructured) return;
 
     const newKey = `${JSON.stringify(canvasStructured)}::${fitToSinglePage}`;
-    if (newKey === lastRenderedKey.current) return; // skip if nothing changed
+    if (newKey === lastRenderedKey.current) return;
     lastRenderedKey.current = newKey;
 
     canvas.innerHTML = renderFromStructured(canvasStructured, fitToSinglePage);
-  }, [canvasStructured, fitToSinglePage]);
+
+    return () => {
+      if (canvas) {
+        canvas.innerHTML = '';
+      }
+    };
+  }, [activeSubTab, canvasStructured, fitToSinglePage]);
 
   // Compute character length safely
   const charLength = canvasStructured ? JSON.stringify(canvasStructured).length : 0;
 
   return (
-    <div className="min-w-0 h-full flex flex-col glass rounded-xl border border-white/10 overflow-hidden resume-editor-pane shadow-2xl relative">
-      {/* Canvas Sub-Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-surface-100/70 flex-shrink-0 no-print">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          <span className="text-xs font-semibold text-gray-200">
-            {activeSubTab === 'editor' ? 'Visual Resume Canvas' : 'Original Uploaded PDF Document'}
-          </span>
-          {fitToSinglePage && activeSubTab === 'editor' && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-medium">
-              1-Page Fit Active
+    <div className="min-w-0 h-full flex flex-col bg-surface-container-lowest rounded-2xl border border-surface-variant overflow-hidden shadow-elevation-1 relative">
+      {/* Canvas Sub-Header: only displayed in visual editor tab */}
+      {activeSubTab === 'editor' && (
+        <div className="flex items-center justify-between px-4 py-3 border-b border-surface-variant bg-surface-container-low/50 flex-shrink-0 no-print">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+            <span className="text-xs font-bold font-headline text-on-surface">
+              Visual Resume Canvas
             </span>
-          )}
-        </div>
+            {fitToSinglePage && (
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-primary-fixed text-on-primary-fixed border border-primary-fixed-dim/50 font-bold">
+                1-Page Fit Active
+              </span>
+            )}
+          </div>
 
-        <div className="flex items-center gap-3">
-          {activeSubTab === 'pdf' && onConvertToNewLayout && (
-            <button
-              onClick={onConvertToNewLayout}
-              disabled={isConvertingLayout}
-              className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-emerald-600/30 disabled:opacity-50 transition-all"
-              title="Convert original resume content directly into the standard 1-page layout"
-            >
-              {isConvertingLayout ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
-              ) : (
-                <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
-              )}
-              {isConvertingLayout ? 'Converting Layout...' : 'Convert to New Layout'}
-            </button>
-          )}
-          <span className="text-xs font-mono text-gray-400">
-            {charLength.toLocaleString()} characters
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-mono text-on-surface-variant font-medium">
+              {charLength.toLocaleString()} characters
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Printable Canvas & PDF Viewing Area */}
       <div
         ref={canvasParentRef}
-        className={`flex-1 overflow-y-auto overflow-x-hidden print-area bg-[#0b0f19] p-4 lg:p-6 flex justify-center ${activeSubTab === 'pdf' ? 'flex flex-col' : 'items-start'} relative`}
+        className={`flex-1 ${activeSubTab === 'pdf' ? 'p-0 flex flex-col overflow-hidden h-full min-h-0' : 'p-4 lg:p-6 flex justify-center items-start overflow-y-auto overflow-x-hidden'} bg-surface-container-low relative`}
       >
         {activeSubTab === 'editor' ? (
           needsAnalysis ? (
-            <div className="flex flex-col items-center justify-center h-full gap-4 text-center max-w-sm mx-auto">
-              <FileText className="w-12 h-12 text-gray-500" />
-              <h4 className="text-sm font-semibold text-white">Resume Could Not Be Structured Automatically</h4>
-              <p className="text-xs text-gray-400 leading-relaxed">
+            <div key="editor-needs-analysis" className="flex flex-col items-center justify-center h-full gap-4 text-center max-w-sm mx-auto p-6 bg-surface-container-lowest rounded-2xl border border-surface-variant shadow-sm">
+              <div className="w-12 h-12 rounded-full bg-primary-fixed text-primary flex items-center justify-center">
+                <FileText className="w-6 h-6" />
+              </div>
+              <h4 className="text-sm font-bold font-headline text-on-surface">Resume Could Not Be Structured Automatically</h4>
+              <p className="text-xs text-on-surface-variant leading-relaxed">
                 We've stored your raw resume text safely. Click the button below to retry generating a structured visual layout with AI.
               </p>
               <button
                 onClick={onAnalyze}
                 disabled={isAnalyzing}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-md transition-all"
+                className="btn-primary text-xs flex items-center gap-1.5"
               >
                 {isAnalyzing ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
-                  <Sparkles className="w-4 h-4 text-yellow-300" />
+                  <Sparkles className="w-4 h-4 text-white" />
                 )}
                 {isAnalyzing ? 'Analyzing Resume...' : 'Generate Structure'}
               </button>
             </div>
           ) : (
             <div
+              key="resume-editor-canvas-container"
               ref={canvasRef}
               id="resume-editor-canvas"
-              className={`editor-textarea bg-white text-slate-800 shadow-2xl rounded-sm mx-auto flex-shrink-0 ${fitToSinglePage ? 'fit-page' : ''}`}
+              className={`editor-textarea bg-white text-slate-800 shadow-elevation-2 rounded-sm mx-auto flex-shrink-0 ${fitToSinglePage ? 'fit-page' : ''}`}
               style={{
                 width: '8.5in',
                 minHeight: '11in',
@@ -132,37 +133,24 @@ export const ResumeCanvasPane: React.FC<ResumeCanvasPaneProps> = ({
             />
           )
         ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center p-2">
-            {hasPDF ? (
-              <iframe
-                src="/api/v1/resume/active/pdf"
-                className="w-full h-full border border-white/10 rounded-lg shadow-2xl bg-white"
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  minHeight: '500px',
-                  objectFit: 'contain',
-                }}
-                title="Original PDF Resume"
-              />
-            ) : (
-              <div className="text-center p-8 max-w-sm glass rounded-xl border border-white/5">
-                <FileText className="w-12 h-12 text-gray-600 mx-auto mb-3" />
-                <h4 className="text-sm font-semibold text-white mb-2">No Original PDF Available</h4>
-                <p className="text-xs text-gray-400 leading-relaxed mb-4">
-                  To view your original PDF document here, please upload a PDF resume.
-                </p>
-                <button
-                  onClick={onUploadClick}
-                  className="btn-primary text-xs"
-                >
-                  Upload Resume PDF
-                </button>
-              </div>
-            )}
+          <div key="resume-pdf-viewer-container" className="w-full h-full flex-1 min-h-0 bg-white relative block">
+            <iframe
+              key="original-pdf-iframe"
+              src="/api/v1/resume/active/pdf#toolbar=1&view=FitH"
+              className="w-full h-full border-0 bg-white block"
+              style={{
+                width: '100%',
+                height: '100%',
+                border: 'none',
+                display: 'block',
+              }}
+              title="Original PDF Resume"
+            />
           </div>
         )}
       </div>
     </div>
   );
 };
+
+export default ResumeCanvasPane;
