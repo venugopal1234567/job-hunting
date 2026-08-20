@@ -1,5 +1,5 @@
 import React from 'react';
-import { RotateCcw, Download, Upload, PanelRightClose, PanelRight, CheckCircle2, Loader2, Sparkles } from 'lucide-react';
+import { RotateCcw, Download, Upload, PanelRightClose, PanelRight, CheckCircle2, Loader2, Sparkles, ExternalLink } from 'lucide-react';
 import { Job } from '../../../types';
 import ATSScoreBar from '../ATSScoreBar';
 
@@ -133,6 +133,21 @@ export const ResumeEditorHeader: React.FC<ResumeEditorHeaderProps> = ({
             )}
             Export to PDF
           </button>
+
+          {/* Apply on Company / Job Board */}
+          {selectedJob?.source_url && (
+            <a
+              href={selectedJob.source_url}
+              target="_blank"
+              rel="noreferrer"
+              id="btn-apply-job-site"
+              className="px-3.5 py-1.5 rounded-full bg-tertiary-fixed text-on-tertiary-fixed hover:bg-tertiary-fixed-dim border border-tertiary-fixed-dim/40 text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm active:scale-95 animate-fade-in"
+              title={`Open job application page for ${selectedJob.title} at ${selectedJob.company}`}
+            >
+              <ExternalLink className="w-3.5 h-3.5 text-tertiary" />
+              <span>Apply on {selectedJob.source_board || selectedJob.company || 'Site'}</span>
+            </a>
+          )}
 
           {/* AI Resume Coach Toggle */}
           <button
