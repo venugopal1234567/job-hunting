@@ -11,9 +11,17 @@ interface JobDetailModalProps {
   job: Job | null;
   onClose: () => void;
   onEditResume?: (job: Job) => void;
+  activeModel?: string;
 }
 
-const JobDetailModal: React.FC<JobDetailModalProps> = ({ job, onClose, onEditResume }) => {
+const shortModelName = (name?: string) => {
+  if (!name) return 'AI Model';
+  const base = name.split('/').pop() || name;
+  const [id, tag] = base.split(':');
+  return tag && tag !== 'latest' ? `${id}:${tag}` : id;
+};
+
+const JobDetailModal: React.FC<JobDetailModalProps> = ({ job, onClose, onEditResume, activeModel }) => {
   const { analysis, loading, error, analyze, reset } = useAtsAnalysis();
 
   useEffect(() => {
@@ -84,13 +92,13 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({ job, onClose, onEditRes
                   </div>
                   <span className="text-sm font-bold font-headline text-on-surface">AI ATS Analysis</span>
                   <span className="text-[11px] bg-primary-fixed text-on-primary-fixed border border-primary-fixed-dim/50 px-2 py-0.5 rounded-full font-medium">
-                    Gemma 4
+                    {shortModelName(activeModel)}
                   </span>
                 </div>
                 {!loading && (
                   <button
                     id="btn-run-ats-analysis"
-                    onClick={() => analyze(job.id, undefined, true)}
+                    onClick={() => analyze(job.id, undefined, true, activeModel)}
                     className="btn-primary text-xs py-1.5 px-4 flex items-center gap-1.5"
                   >
                     <Sparkles className="w-3.5 h-3.5" />
@@ -102,7 +110,7 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({ job, onClose, onEditRes
               {loading && (
                 <div className="flex flex-col items-center py-8 gap-3">
                   <Loader2 className="w-8 h-8 text-primary animate-spin" />
-                  <p className="text-sm font-medium text-on-surface">Gemma 4 is analyzing your resume match...</p>
+                  <p className="text-sm font-medium text-on-surface">{shortModelName(activeModel)} is analyzing your resume match...</p>
                   <p className="text-xs text-on-surface-variant">This may take 30-60 seconds</p>
                 </div>
               )}

@@ -8,9 +8,17 @@ interface NavbarProps {
   scraping: boolean;
   jobCount: number;
   apiHealthy: boolean;
+  activeModel?: string;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabChange, onScrape, scraping, jobCount, apiHealthy }) => {
+const shortModelName = (name?: string) => {
+  if (!name) return 'AI Model';
+  const base = name.split('/').pop() || name;
+  const [id, tag] = base.split(':');
+  return tag && tag !== 'latest' ? `${id}:${tag}` : id;
+};
+
+const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabChange, onScrape, scraping, jobCount, apiHealthy, activeModel }) => {
   return (
     <nav className="bg-surface-container-low/90 backdrop-blur-xl rounded-full mt-4 mx-auto w-[95%] max-w-7xl sticky top-4 shadow-elevation-3 flex justify-between items-center px-4 sm:px-6 py-3 z-50 border border-surface-container-highest transition-all">
       {/* Brand */}
@@ -95,9 +103,12 @@ const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabChange, onScrape, scrap
           <span className="hidden sm:inline">{scraping ? 'Scraping...' : 'Scrape Now'}</span>
         </button>
 
-        <div className="hidden md:flex items-center gap-1.5 bg-primary-fixed text-on-primary-fixed px-3 py-1.5 rounded-full text-xs font-medium border border-primary-fixed-dim/50">
-          <Sparkles className="w-3.5 h-3.5 text-primary" />
-          <span>Gemma 4</span>
+        <div
+          className="hidden md:flex items-center gap-1.5 bg-primary-fixed text-on-primary-fixed px-3 py-1.5 rounded-full text-xs font-medium border border-primary-fixed-dim/50 max-w-[220px]"
+          title={`Active AI Model: ${activeModel || 'Default'}`}
+        >
+          <Sparkles className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+          <span className="truncate">{shortModelName(activeModel)}</span>
         </div>
       </div>
     </nav>

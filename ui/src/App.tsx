@@ -9,7 +9,7 @@ import SourceManager from './components/settings/SourceManager';
 import AIModelPicker from './components/settings/AIModelPicker';
 import { useJobs } from './hooks/useJobs';
 import { useResume } from './hooks/useResume';
-import { checkHealth } from './services/api';
+import { checkHealth, getAISettings } from './services/api';
 import { Job, JobFilterParams } from './types';
 import { Loader2, SearchX, WifiOff, Sparkles } from 'lucide-react';
 
@@ -17,6 +17,7 @@ type ActiveTab = 'dashboard' | 'resume' | 'settings';
 
 function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
+  const [activeModel, setActiveModel] = useState<string>('');
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [viewingJob, setViewingJob] = useState<Job | null>(null);
   const [currentFilters, setCurrentFilters] = useState<JobFilterParams>(() => {
@@ -68,12 +69,18 @@ function App() {
   const { jobs, total, loading, error, refresh, triggerManualScrape, scraping } = useJobs(currentFilters);
   const { resume } = useResume();
 
-  // Health check on mount
+  // Health check on mount & sync active model
   useEffect(() => {
     checkHealth().then(setApiHealthy);
     const interval = setInterval(() => checkHealth().then(setApiHealthy), 30000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    getAISettings().then(s => {
+      if (s?.active_model) setActiveModel(s.active_model);
+    }).catch(() => {});
+  }, [activeTab]);
 
   const handleFilter = useCallback((params: JobFilterParams) => {
     setCurrentFilters(params);
@@ -104,6 +111,7 @@ function App() {
         scraping={scraping}
         jobCount={total}
         apiHealthy={apiHealthy}
+        activeModel={activeModel}
       />
 
       {/* API status banner */}
@@ -213,6 +221,7 @@ function App() {
         job={viewingJob}
         onClose={() => setViewingJob(null)}
         onEditResume={handleEditResume}
+        activeModel={activeModel}
       />
     </div>
   );
