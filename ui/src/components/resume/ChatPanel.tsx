@@ -42,6 +42,14 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   const [availableModels, setAvailableModels] = useState<NvidiaModel[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>(activeModelProp || '');
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+  const [skipQuestions, setSkipQuestions] = useState<boolean>(() => {
+    return localStorage.getItem('ai_skip_questions') === 'true';
+  });
+
+  const handleToggleSkipQuestions = (val: boolean) => {
+    setSkipQuestions(val);
+    localStorage.setItem('ai_skip_questions', String(val));
+  };
 
   // Load models once on mount
   useEffect(() => {
@@ -93,23 +101,50 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     let responseText = "Here are my details for the missing skills:\n";
     gapPrompts.forEach(p => {
       const ans = answers[p.skill];
-      if (ans.hasSkill) {
+      if (ans?.hasSkill) {
         responseText += `- **${p.skill}**: Yes. Details: ${ans.details.trim() || 'I have experience in this area.'}\n`;
       } else {
         responseText += `- **${p.skill}**: No, I do not have experience with this.\n`;
       }
     });
     
-    responseText += "\nPlease refine my resume and generate the improved section suggestions based on these inputs.";
+    responseText += "\nIMPORTANT: All questions are answered. Do NOT ask any more gap questions. Set gap_prompts to [] and generate the complete improved structured_resume now.";
     const jdContext = customJdEnabled && customJdText.trim() ? customJdText.trim() : undefined;
     onSend(responseText, jdContext);
+    setAnswers({});
+  };
+
+  const handleSkipAndTailorImmediately = () => {
+    const jdContext = customJdEnabled && customJdText.trim() ? customJdText.trim() : undefined;
+    
+    let answerSummary = '';
+    const answeredSkills = Object.keys(answers).filter(k => answers[k]?.answered);
+    if (answeredSkills.length > 0) {
+      answerSummary = "Here are my inputs for the skills I answered:\n";
+      answeredSkills.forEach(k => {
+        const ans = answers[k];
+        if (ans.hasSkill) {
+          answerSummary += `- **${k}**: Yes. ${ans.details.trim() ? `Details: ${ans.details.trim()}` : 'I have experience in this area.'}\n`;
+        } else {
+          answerSummary += `- **${k}**: No, I do not have experience with this.\n`;
+        }
+      });
+      answerSummary += "For all other/unanswered skills, do not ask again—assume I don't have them and proceed.\n\n";
+    }
+
+    const promptText = `${answerSummary}Please proceed immediately to tailor and optimize my resume for this job description based on my existing experience and the inputs provided above. Do NOT ask any more gap questions or repeat previous questions. Return gap_prompts as [] and output the complete tailored structured_resume now.`;
+    
+    onSend(promptText, jdContext);
     setAnswers({});
   };
 
   const handleRestart = () => {
     setAnswers({});
     const jdContext = customJdEnabled && customJdText.trim() ? customJdText.trim() : undefined;
-    onSend("Improve ATS score", jdContext);
+    const promptText = skipQuestions
+      ? "Directly tailor and optimize my resume for this job to maximize ATS match score. Do NOT ask any gap questions. Return gap_prompts as [] and provide the complete tailored structured_resume immediately."
+      : "Improve ATS score";
+    onSend(promptText, jdContext);
   };
 
   return (
@@ -198,15 +233,26 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             <p className="text-xs text-on-surface-variant max-w-[280px] leading-relaxed">
               Auto-scan your active resume against job requirements to calculate ATS score and fill key skill gaps.
             </p>
+            
+            <div className="flex items-center gap-2 mt-1 mb-1">
+              <input
+                type="checkbox"
+                id="toggle-skip-questions-empty"
+                checked={skipQuestions}
+                onChange={(e) => handleToggleSkipQuestions(e.target.checked)}
+                className="w-3.5 h-3.5 text-primary rounded border-surface-variant focus:ring-primary"
+              />
+              <label htmlFor="toggle-skip-questions-empty" className="text-xs text-on-surface-variant font-medium cursor-pointer">
+                Skip question phase (Generate directly)
+              </label>
+            </div>
+
             <button
-              onClick={() => {
-                const jdContext = customJdEnabled && customJdText.trim() ? customJdText.trim() : undefined;
-                onSend("Improve ATS score", jdContext);
-              }}
-              className="mt-2 w-full max-w-[280px] btn-primary text-xs py-2.5 px-5 flex items-center justify-center gap-2"
+              onClick={handleRestart}
+              className="mt-1 w-full max-w-[280px] btn-primary text-xs py-2.5 px-5 flex items-center justify-center gap-2"
             >
               <Sparkles className="w-4 h-4" />
-              Improve ATS Score
+              {skipQuestions ? 'Tailor Resume Directly' : 'Improve ATS Score'}
             </button>
           </div>
         )}
@@ -351,21 +397,33 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
               );
             })}
 
-            {/* Continue button */}
-            <button
-              onClick={handleContinue}
-              disabled={unansweredCount > 0}
-              className={`w-full py-2.5 px-4 rounded-full text-xs font-semibold shadow-elevation-1 transition-all flex items-center justify-center gap-2 mt-4 ${
-                unansweredCount > 0
-                  ? 'bg-surface-container text-on-surface-variant cursor-not-allowed shadow-none'
-                  : 'btn-primary'
-              }`}
-            >
-              <Send className="w-3.5 h-3.5" />
-              {unansweredCount > 0 
-                ? `Answer all questions to continue (${gapPrompts.length - unansweredCount}/${gapPrompts.length})` 
-                : 'Continue Tailoring'}
-            </button>
+            {/* Action buttons */}
+            <div className="space-y-2 mt-4">
+              <button
+                onClick={handleContinue}
+                disabled={unansweredCount > 0}
+                className={`w-full py-2.5 px-4 rounded-full text-xs font-semibold shadow-elevation-1 transition-all flex items-center justify-center gap-2 ${
+                  unansweredCount > 0
+                    ? 'bg-surface-container text-on-surface-variant cursor-not-allowed shadow-none'
+                    : 'btn-primary'
+                }`}
+              >
+                <Send className="w-3.5 h-3.5" />
+                {unansweredCount > 0 
+                  ? `Answer all questions to continue (${gapPrompts.length - unansweredCount}/${gapPrompts.length})` 
+                  : 'Continue Tailoring'}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSkipAndTailorImmediately}
+                className="w-full py-2 px-4 rounded-full text-xs font-semibold text-primary bg-primary-fixed/40 hover:bg-primary-fixed/70 border border-primary-fixed-dim/50 transition-all flex items-center justify-center gap-1.5"
+                title="Generate resume directly using existing information without answering remaining gap questions"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-primary" />
+                Skip Questions & Tailor Directly
+              </button>
+            </div>
           </div>
         )}
 

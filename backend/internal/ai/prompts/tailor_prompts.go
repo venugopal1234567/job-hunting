@@ -176,6 +176,7 @@ CRITICAL RULES & CONSTRAINTS:
 - MANDATORY KEYWORD BOLDING ACROSS ALL SECTIONS: In "summary", "work_experience" (both bullet points and tech_stack), and "skills", you MUST wrap the high-value technical keywords, frameworks, databases, and core skills that match the target Job Description in markdown bold syntax (for example: **Go**, **Kubernetes**, **client-go**, **controller-runtime**, **NATS**, **gRPC**, **PostgreSQL**, **Redis**, **Distributed Tracing**, **TDD**).
 - BULLET POINT VERBS: Every bullet point in work_experience MUST also start with a strong bold action verb (e.g. **Architected**, **Spearheaded**, **Developed**, **Built**, **Optimized**).
 - Do NOT bold arbitrary words or whole filler phrases. Bold ONLY the action verbs and the specific high-value Job Description keywords.
+- NEVER LOOP QUESTIONS: If the candidate is answering previous gap questions, or if the candidate explicitly asks to skip questions / generate immediately / continue without asking, you MUST IMMEDIATELY proceed to PHASE 2. In this case, "gap_prompts" MUST be [] and you MUST output the complete "structured_resume". Under NO circumstances should you ask repeat or new questions.
 - Ensure proper spacing after punctuation.
 - Return [] for "gap_prompts" and null for "structured_resume" if not generating a resume edit.
 
