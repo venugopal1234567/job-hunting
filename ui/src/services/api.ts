@@ -159,8 +159,9 @@ export const getSettings = async (): Promise<Settings> => {
   return data;
 };
 
-export const updateSources = async (sources: ScraperConfig[]): Promise<void> => {
-  await api.put('/settings/sources', sources);
+export const updateSources = async (sources: ScraperConfig[] | string[]): Promise<void> => {
+  const sourceNames = sources.map((s) => (typeof s === 'string' ? s : s.board_name));
+  await api.put('/settings/sources', { sources: sourceNames });
 };
 
 export const checkHealth = async (): Promise<boolean> => {

@@ -19,7 +19,31 @@ const SourceManager: React.FC = () => {
     setLoading(true);
     try {
       const settings = await getSettings();
-      setSources(settings.sources || []);
+      console.log('[SourceManager] Raw settings from API:', settings);
+
+      const rawSources = (settings as any).sources || [];
+      const normalized: ScraperConfig[] = rawSources.map((item: any, index: number) => {
+        if (typeof item === 'string') {
+          return {
+            id: index + 1,
+            board_name: item,
+            target_url: `https://${item}.com`,
+            enabled: true,
+            cron_schedule: '@every 1h',
+            last_run_at: null,
+          };
+        }
+        return {
+          id: item.id ?? (index + 1),
+          board_name: item.board_name || item.name || item.title || item.source || item.board || `Source ${index + 1}`,
+          target_url: item.target_url || item.url || item.target || '',
+          enabled: item.enabled ?? true,
+          cron_schedule: item.cron_schedule || item.schedule || '@every 1h',
+          last_run_at: item.last_run_at || item.last_run || null,
+        };
+      });
+
+      setSources(normalized);
     } catch (err) {
       console.error('Failed to load settings:', err);
     } finally {
