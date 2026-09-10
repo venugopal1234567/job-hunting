@@ -19,7 +19,11 @@ func main() {
 
 	log.Printf("[Main] Starting RemoteHunter API server on :%s", cfg.Server.Port)
 	log.Printf("[Main] Database: %s@%s:%s/%s", cfg.Database.User, cfg.Database.Host, cfg.Database.Port, cfg.Database.Name)
-	log.Printf("[Main] NVIDIA LLM: %s (model: %s)", cfg.Nvidia.BaseURL, cfg.Nvidia.Model)
+	log.Printf("[Main] AI LLM: %s (model: %s)", cfg.AI.BaseURL, cfg.AI.Model)
+
+	if cfg.AI.APIKey == "" || cfg.AI.Model == "" {
+		log.Fatalf("[Main] Missing required AI config: set AI_API_KEY and AI_MODEL in .env")
+	}
 
 	// Connect to PostgreSQL
 	database, err := db.Connect(cfg.Database.DSN())
@@ -39,7 +43,7 @@ func main() {
 	settingsRepo := postgres.NewSettingsRepo(database)
 
 	// Initialize AI client
-	aiClient := ai.NewClient(cfg.Nvidia.APIKey, cfg.Nvidia.BaseURL, cfg.Nvidia.Model)
+	aiClient := ai.NewClient(cfg.AI.APIKey, cfg.AI.BaseURL, cfg.AI.Model)
 
 	// Initialize and start background scheduler
 	scheduler := scraper.NewScheduler(database)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"remotehunter/internal/repository"
-	"strings"
 )
 
 type SettingsRepo struct {
@@ -56,11 +55,8 @@ func (r *SettingsRepo) GetActiveModel(ctx context.Context, defaultModel string) 
 	if err != nil || val == "" {
 		return defaultModel, nil
 	}
-	// Validate prefix
-	if !strings.HasPrefix(val, "z-ai/") && !strings.HasPrefix(val, "openai/") &&
-		!strings.HasPrefix(val, "nvidia/") && !strings.HasPrefix(val, "meta/") &&
-		!strings.HasPrefix(val, "mistralai/") && !strings.HasPrefix(val, "deepseek-ai/") &&
-		!strings.HasPrefix(val, "qwen/") {
+	// Accept any non-empty model name
+	if val == "" {
 		return defaultModel, nil
 	}
 	return val, nil

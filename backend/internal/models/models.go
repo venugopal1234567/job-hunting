@@ -181,8 +181,8 @@ type UpdateResumeRequest struct {
 	Structured *StructuredResume `json:"structured"`
 }
 
-// NvidiaModel represents an available NVIDIA AI model
-type NvidiaModel struct {
+// AIModel represents an available AI model
+type AIModel struct {
 	Name       string    `json:"name"`
 	Size       int64     `json:"size"`
 	ModifiedAt time.Time `json:"modified_at"`
@@ -193,7 +193,7 @@ type NvidiaModel struct {
 type AISettings struct {
 	ActiveModel     string        `json:"active_model"`
 	DefaultModel    string        `json:"default_model"`
-	AvailableModels []NvidiaModel `json:"available_models"`
+	AvailableModels []AIModel `json:"available_models"`
 }
 
 // RecruiterValidationResult represents an independent recruiter AI audit of a generated resume

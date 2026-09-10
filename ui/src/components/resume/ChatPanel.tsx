@@ -5,7 +5,7 @@ import {
   FileText, MessageSquare
 } from 'lucide-react';
 import { ChatMessage } from '../../types';
-import { getAISettings, NvidiaModel } from '../../services/api';
+import { getAISettings, AIModel } from '../../services/api';
 
 interface ChatPanelProps {
   messages: ChatMessage[];
@@ -39,7 +39,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   const [appliedMessageIds, setAppliedMessageIds] = useState<Record<string, boolean>>({});
   const [customCommand, setCustomCommand] = useState('');
   const [answers, setAnswers] = useState<Record<string, { answered: boolean; hasSkill: boolean; details: string }>>({});
-  const [availableModels, setAvailableModels] = useState<NvidiaModel[]>([]);
+  const [availableModels, setAvailableModels] = useState<AIModel[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>(activeModelProp || '');
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [skipQuestions, setSkipQuestions] = useState<boolean>(() => {

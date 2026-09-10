@@ -9,7 +9,7 @@ import (
 type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
-	Nvidia   NvidiaConfig
+	AI       AIConfig
 }
 
 type ServerConfig struct {
@@ -24,7 +24,7 @@ type DatabaseConfig struct {
 	Password string
 }
 
-type NvidiaConfig struct {
+type AIConfig struct {
 	APIKey  string
 	BaseURL string
 	Model   string
@@ -43,10 +43,10 @@ func Load() *Config {
 			User:     getEnv("DB_USER", "hunter"),
 			Password: getEnv("DB_PASSWORD", "hunterpass"),
 		},
-		Nvidia: NvidiaConfig{
-			APIKey:  getEnv("NVIDIA_API_KEY", ""),
-			BaseURL: getEnv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1"),
-			Model:   getEnv("NVIDIA_MODEL", "z-ai/glm-5.2"),
+		AI: AIConfig{
+			APIKey:  getEnv("AI_API_KEY", ""),
+			BaseURL: getEnv("AI_BASE_URL", ""),
+			Model:   getEnv("AI_MODEL", ""),
 		},
 	}
 }

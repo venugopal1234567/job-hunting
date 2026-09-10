@@ -3,7 +3,7 @@ import {
   Cpu, RefreshCw, CheckCircle2, Loader2, AlertTriangle,
   ChevronRight, Sparkles, HardDrive, Clock
 } from 'lucide-react';
-import { getAISettings, updateAISettings, getAIModels, NvidiaModel, AISettings } from '../../services/api';
+import { getAISettings, updateAISettings, getAIModels, AIModel, AISettings } from '../../services/api';
 
 const formatSize = (bytes: number): string => {
   if (bytes === 0) return '—';
@@ -36,7 +36,7 @@ const familyColor: Record<string, string> = {
   'z-ai':   'bg-primary-fixed text-on-primary-fixed border-primary-fixed-dim/40',
 };
 
-const getFamilyClass = (model: NvidiaModel): string => {
+const getFamilyClass = (model: AIModel): string => {
   const family = (model.family || model.name.split(':')[0].split('/')[0] || '').toLowerCase();
   for (const [key, cls] of Object.entries(familyColor)) {
     if (family.includes(key)) return cls;
@@ -44,7 +44,7 @@ const getFamilyClass = (model: NvidiaModel): string => {
   return 'bg-surface-container text-on-surface-variant border-surface-variant';
 };
 
-const getFamilyLabel = (model: NvidiaModel): string => {
+const getFamilyLabel = (model: AIModel): string => {
   return (model.family || model.name.split('/')[0] || 'nvidia').toLowerCase();
 };
 
@@ -79,7 +79,7 @@ const AIModelPicker: React.FC = () => {
       const models = await getAIModels();
       setSettings(prev => prev ? { ...prev, available_models: models } : prev);
     } catch {
-      setError('Failed to refresh model list from NVIDIA API.');
+      setError('Failed to refresh model list.');
     } finally {
       setRefreshing(false);
     }
@@ -120,14 +120,14 @@ const AIModelPicker: React.FC = () => {
           </div>
           <div>
             <h3 className="text-base font-bold font-headline text-on-surface">AI Model</h3>
-            <p className="text-xs text-on-surface-variant mt-0.5">Select which NVIDIA NIM cloud model powers the resume coach</p>
+            <p className="text-xs text-on-surface-variant mt-0.5">Select which AI model powers the resume coach</p>
           </div>
         </div>
         <button
           onClick={handleRefreshModels}
           disabled={refreshing}
           className="btn-ghost text-xs flex items-center gap-1.5 px-3 py-1.5"
-          title="Refresh model list from NVIDIA API"
+          title="Refresh model list"
           id="btn-refresh-models"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />

@@ -68,7 +68,7 @@ func (h *Handler) GetAISettings(c *gin.Context) {
 		"active_model":    activeModel,
 		"default_model":   defaultModel,
 		"available_models": availableModels,
-		"provider":        "nvidia",
+		"provider":        "custom",
 	})
 }
 

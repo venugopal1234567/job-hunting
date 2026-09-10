@@ -175,7 +175,7 @@ export const checkHealth = async (): Promise<boolean> => {
 
 // ─── AI Model Settings ─────────────────────────────────────────────────────────
 
-export interface NvidiaModel {
+export interface AIModel {
   name: string;
   size: number;
   modified_at: string;
@@ -185,7 +185,7 @@ export interface NvidiaModel {
 export interface AISettings {
   active_model: string;
   default_model: string;
-  available_models: NvidiaModel[];
+  available_models: AIModel[];
 }
 
 export const getAISettings = async (): Promise<AISettings> => {
@@ -198,7 +198,7 @@ export const updateAISettings = async (activeModel: string): Promise<{ active_mo
   return data;
 };
 
-export const getAIModels = async (): Promise<NvidiaModel[]> => {
-  const { data } = await api.get<{ models: NvidiaModel[] }>('/ai/models');
+export const getAIModels = async (): Promise<AIModel[]> => {
+  const { data } = await api.get<{ models: AIModel[] }>('/ai/models');
   return data.models;
 };
