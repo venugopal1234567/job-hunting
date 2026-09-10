@@ -23,13 +23,23 @@ func (r *JobRepo) GetJobs(ctx context.Context, filter repository.JobFilter) ([]m
 	argIdx := 1
 
 	if filter.Days > 0 {
-		where = append(where, fmt.Sprintf("posted_at >= NOW() - INTERVAL '%d days'", filter.Days))
+		where = append(where, fmt.Sprintf("(posted_at >= NOW() - INTERVAL '%d days' OR posted_at IS NULL AND scraped_at >= NOW() - INTERVAL '%d days')", filter.Days, filter.Days))
 	}
 
 	if filter.Country != "" {
-		where = append(where, fmt.Sprintf("LOWER(location) LIKE $%d", argIdx))
-		args = append(args, "%"+strings.ToLower(filter.Country)+"%")
-		argIdx++
+		countryList := strings.Split(filter.Country, ",")
+		var countryConditions []string
+		for _, c := range countryList {
+			c = strings.TrimSpace(c)
+			if c != "" {
+				countryConditions = append(countryConditions, fmt.Sprintf("LOWER(location) LIKE $%d", argIdx))
+				args = append(args, "%"+strings.ToLower(c)+"%")
+				argIdx++
+			}
+		}
+		if len(countryConditions) > 0 {
+			where = append(where, "("+strings.Join(countryConditions, " OR ")+")")
+		}
 	}
 
 	if filter.Skills != "" {
