@@ -1,10 +1,8 @@
 package scraper
 
 import (
-	"context"
 	"encoding/json"
 	"log"
-	"os"
 	"remotehunter/internal/models"
 	"strings"
 	"time"
@@ -25,36 +23,8 @@ func (s *BDJobsScraper) Scrape(targetURL string) ([]models.Job, error) {
 		targetURL = "https://jobs.bdjobs.com/jobsearch.asp?txtsearch=golang"
 	}
 
-	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", true),
-		chromedp.Flag("no-sandbox", true),
-		chromedp.Flag("disable-setuid-sandbox", true),
-		chromedp.Flag("disable-dev-shm-usage", true),
-		chromedp.Flag("disable-gpu", true),
-		chromedp.Flag("disable-blink-features", "AutomationControlled"),
-		chromedp.Flag("window-size", "1920,1080"),
-		chromedp.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
-	)
-
-	if chromePath := os.Getenv("CHROME_PATH"); chromePath != "" {
-		opts = append(opts, chromedp.ExecPath(chromePath))
-	} else {
-		for _, path := range []string{"/usr/bin/chromium-browser", "/usr/bin/google-chrome", "/snap/bin/chromium", "/usr/bin/chromium"} {
-			if _, err := os.Stat(path); err == nil {
-				opts = append(opts, chromedp.ExecPath(path))
-				break
-			}
-		}
-	}
-
-	allocCtx, cancelAlloc := chromedp.NewExecAllocator(context.Background(), opts...)
-	defer cancelAlloc()
-
-	ctx, cancelCtx := chromedp.NewContext(allocCtx)
-	defer cancelCtx()
-
-	ctx, cancelTimeout := context.WithTimeout(ctx, 120*time.Second)
-	defer cancelTimeout()
+	ctx, cancel := newHeadlessContext(120 * time.Second)
+	defer cancel()
 
 	urls := strings.Split(targetURL, "|")
 	var allJobs []models.Job

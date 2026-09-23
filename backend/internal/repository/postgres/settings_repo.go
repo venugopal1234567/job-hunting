@@ -17,9 +17,6 @@ func NewSettingsRepo(db *sql.DB) repository.SettingsRepository {
 func (r *SettingsRepo) GetSetting(ctx context.Context, key string) (string, error) {
 	var val string
 	err := r.db.QueryRowContext(ctx, `SELECT value FROM app_settings WHERE key = $1`, key).Scan(&val)
-	if err == sql.ErrNoRows {
-		return "", nil
-	}
 	return val, err
 }
 
@@ -53,10 +50,6 @@ func (r *SettingsRepo) GetAllSettings(ctx context.Context) (map[string]string, e
 func (r *SettingsRepo) GetActiveModel(ctx context.Context, defaultModel string) (string, error) {
 	val, err := r.GetSetting(ctx, "active_model")
 	if err != nil || val == "" {
-		return defaultModel, nil
-	}
-	// Accept any non-empty model name
-	if val == "" {
 		return defaultModel, nil
 	}
 	return val, nil

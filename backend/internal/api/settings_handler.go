@@ -19,7 +19,7 @@ func (h *Handler) GetSettings(c *gin.Context) {
 	ctx := c.Request.Context()
 	activeSources, err := h.settingsRepo.GetSetting(ctx, "active_sources")
 	if err != nil || activeSources == "" {
-		activeSources = "weworkremotely,realworkfromanywhere,googlejobs,builtin,golangprojects,remoterocketship,vacancyglobalpro,bayt,naukri,bdjobs,flexboard,hnhiring,remotive,arbeitnow,ziprecruiter,indeed,linkedin,glassdoor,remoteok"
+		activeSources = strings.Join(AllSources, ",")
 	}
 
 	sourcesList := strings.Split(activeSources, ",")

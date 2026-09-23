@@ -14,7 +14,7 @@ import (
 // and returns a structured ATS analysis report.
 func (c *Client) AnalyzeATSMatch(job *models.Job, resume *models.Resume, modelOverride string) (*models.ATSAnalysis, error) {
 	prompt := buildATSPrompt(job, resume)
-	rawResponse, err := c.generateCompletion(prompt, modelOverride, true)
+	rawResponse, err := c.generateCompletion(prompt, modelOverride)
 	if err != nil {
 		return nil, err
 	}
@@ -36,13 +36,7 @@ func buildATSPrompt(job *models.Job, resume *models.Resume) string {
 
 // parseATSResponse parses the LLM JSON response into an ATSAnalysis struct
 func parseATSResponse(raw string, job *models.Job, resume *models.Resume) (*models.ATSAnalysis, error) {
-	raw = strings.TrimSpace(raw)
-	if idx := strings.Index(raw, "{"); idx > 0 {
-		raw = raw[idx:]
-	}
-	if idx := strings.LastIndex(raw, "}"); idx >= 0 {
-		raw = raw[:idx+1]
-	}
+	raw = extractJSONObject(raw)
 
 	var parsed struct {
 		ATSScore              int                  `json:"ats_score"`
@@ -73,7 +67,7 @@ func parseATSResponse(raw string, job *models.Job, resume *models.Resume) (*mode
 // ChatWithResume sends a conversational message with resume context to AI provider.
 func (c *Client) ChatWithResume(req *models.ChatRequest, jobContext string, modelOverride string) (*models.ChatResponse, error) {
 	prompt := buildChatPrompt(req, jobContext)
-	rawResponse, err := c.generateCompletion(prompt, modelOverride, true)
+	rawResponse, err := c.generateCompletion(prompt, modelOverride)
 	if err != nil {
 		return nil, fmt.Errorf("chat completion failed: %w", err)
 	}
@@ -134,13 +128,7 @@ func buildChatPrompt(req *models.ChatRequest, jobContext string) string {
 
 // parseChatResponse parses the LLM JSON chat response
 func parseChatResponse(raw string) *models.ChatResponse {
-	raw = strings.TrimSpace(raw)
-	if idx := strings.Index(raw, "{"); idx > 0 {
-		raw = raw[idx:]
-	}
-	if idx := strings.LastIndex(raw, "}"); idx >= 0 {
-		raw = raw[:idx+1]
-	}
+	raw = extractJSONObject(raw)
 
 	var parsed models.ChatResponse
 	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {

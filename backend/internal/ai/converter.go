@@ -27,18 +27,12 @@ func (c *Client) ConvertResumeToTemplate(rawText string, modelOverride string, f
 	cleanText := stripHTMLForPrompt(rawText)
 	prompt := fmt.Sprintf(prompts.ConvertResumePromptTemplate, fitInstruction, truncate(cleanText, 500000))
 
-	rawResponse, err := c.generateCompletion(prompt, modelOverride, true)
+	rawResponse, err := c.generateCompletion(prompt, modelOverride)
 	if err != nil {
 		return nil, "", err
 	}
 
-	rawResponse = strings.TrimSpace(rawResponse)
-	if idx := strings.Index(rawResponse, "{"); idx >= 0 {
-		rawResponse = rawResponse[idx:]
-	}
-	if idx := strings.LastIndex(rawResponse, "}"); idx >= 0 {
-		rawResponse = rawResponse[:idx+1]
-	}
+	rawResponse = extractJSONObject(rawResponse)
 
 	var structRes models.StructuredResume
 	if err := json.Unmarshal([]byte(rawResponse), &structRes); err != nil {

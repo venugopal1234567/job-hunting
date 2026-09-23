@@ -4,14 +4,19 @@ import (
 	"fmt"
 	"html"
 	"remotehunter/internal/models"
+	"remotehunter/internal/pdf"
 	"strings"
 )
 
 // BuildATSTemplateHTML renders a structured resume into an elegant Times New Roman HTML/CSS single-page template.
+// When fitSinglePage is true the compact single-page CSS override is applied so
+// the rendered HTML (and any PDF made from it) is squeezed onto one page.
 func BuildATSTemplateHTML(sr *models.StructuredResume, fitSinglePage ...bool) string {
 	if sr == nil {
 		return ""
 	}
+
+	fit := len(fitSinglePage) > 0 && fitSinglePage[0]
 
 	var sb strings.Builder
 	sb.WriteString(`<!DOCTYPE html>
@@ -294,7 +299,7 @@ func BuildATSTemplateHTML(sr *models.StructuredResume, fitSinglePage ...bool) st
 				for _, b := range job.Bullets {
 					sb.WriteString(`
             <li>`)
-					sb.WriteString(formatBulletActionVerbGo(b))
+					sb.WriteString(renderFormattedTextGo(b))
 					sb.WriteString(`</li>`)
 				}
 				sb.WriteString(`
@@ -337,5 +342,9 @@ func BuildATSTemplateHTML(sr *models.StructuredResume, fitSinglePage ...bool) st
 </body>
 </html>`)
 
-	return sb.String()
+	html := sb.String()
+	if fit {
+		html = pdf.InjectSinglePageStyle(html)
+	}
+	return html
 }

@@ -14,18 +14,18 @@ import (
 
 // Client is the AI provider client for OpenAI-compatible endpoints
 type Client struct {
-	apiKey  string
-	baseURL string
-	model   string
+	apiKey     string
+	baseURL    string
+	model      string
 	httpClient *http.Client
 }
 
 // NewClient creates a new AI client
 func NewClient(apiKey, baseURL, model string) *Client {
 	return &Client{
-		apiKey:     apiKey,
-		baseURL:    baseURL,
-		model:      model,
+		apiKey:  apiKey,
+		baseURL: baseURL,
+		model:   model,
 		httpClient: &http.Client{
 			Timeout: 600 * time.Second,
 		},
@@ -54,7 +54,7 @@ func (c *Client) resolveModel(override string) string {
 }
 
 // generateCompletion calls the configured OpenAI-compatible endpoint with 429 retry backoff
-func (c *Client) generateCompletion(prompt string, modelOverride string, jsonFormat bool) (string, error) {
+func (c *Client) generateCompletion(prompt string, modelOverride string) (string, error) {
 	model := c.resolveModel(modelOverride)
 
 	baseURL := c.baseURL
@@ -65,11 +65,10 @@ func (c *Client) generateCompletion(prompt string, modelOverride string, jsonFor
 		Content string `json:"content"`
 	}
 	type openAIReq struct {
-		Model          string          `json:"model"`
-		Messages       []openAIMessage `json:"messages"`
-		Temperature    float64         `json:"temperature"`
-		MaxTokens      int             `json:"max_tokens,omitempty"`
-		ResponseFormat interface{}     `json:"response_format,omitempty"`
+		Model       string          `json:"model"`
+		Messages    []openAIMessage `json:"messages"`
+		Temperature float64         `json:"temperature"`
+		MaxTokens   int             `json:"max_tokens,omitempty"`
 	}
 
 	var lastErr error
@@ -108,8 +107,7 @@ func (c *Client) generateCompletion(prompt string, modelOverride string, jsonFor
 
 		resp, err := c.httpClient.Do(httpReq)
 		if err != nil {
-			lastErr = fmt.Errorf("ai api request failed: %w", err)
-			continue
+			return "", fmt.Errorf("ai api request failed: %w", err)
 		}
 
 		if resp.StatusCode == 429 {

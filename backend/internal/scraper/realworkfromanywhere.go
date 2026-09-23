@@ -54,14 +54,15 @@ func (s *RealWorkFromAnywhereScraper) Scrape(targetURL string) ([]models.Job, er
 			log.Printf("[Scraper] RealWorkFromAnywhere: HTTP request failed: %v", err)
 			continue
 		}
-		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
 			log.Printf("[Scraper] RealWorkFromAnywhere: received HTTP status %d", resp.StatusCode)
+			resp.Body.Close()
 			continue
 		}
 
 		doc, err := html.Parse(resp.Body)
+		resp.Body.Close()
 		if err != nil {
 			log.Printf("[Scraper] RealWorkFromAnywhere: HTML parsing failed: %v", err)
 			continue

@@ -5,45 +5,53 @@ import (
 	"log"
 	"remotehunter/internal/models"
 	"strings"
+	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/robfig/cron/v3"
 )
+
+// purgeInterval is how often stale-job purging may actually run. Every board
+// run calls PurgeStaleJobs, so without this a sweep would issue one full-table
+// DELETE per enabled board.
+const purgeInterval = 30 * time.Minute
 
 // Scheduler manages background cron-based scraping
 type Scheduler struct {
 	cron      *cron.Cron
 	db        *sql.DB
 	scrapers  map[string]Scraper
-	isRunning bool
+	purgeMu   sync.Mutex
+	lastPurge time.Time
 }
 
 // NewScheduler creates a new scheduler with all registered scrapers.
 // Keys must match the board_name values stored in scraper_configs (case-insensitive).
 func NewScheduler(db *sql.DB) *Scheduler {
 	scrapers := map[string]Scraper{
-		"golangprojects":       NewGolangProjectsScraper(),
-		"hnhiring":             NewHNHiringScraper(),
-		"weworkremotely":       NewWeWorkRemotelyScraper(),
-		"weworkremotelygolang": NewWeWorkRemotelyScraper(),
-		"remotive":             NewRemotiveScraper(),
-		"arbeitnow":            NewArbeitnowScraper(),
-		"remoteok":             NewRemoteOKScraper(),
-		"builtin":              NewBuiltInScraper(),
-		"builtinremote":        NewBuiltInScraper(),
-		"flexboard":            NewFlexboardScraper(),
-		"vacancyglobalpro":     NewVacancyGlobalProScraper(),
-		"googlejobs":           NewGoogleJobsScraper(),
+		"golangprojects":        NewGolangProjectsScraper(),
+		"hnhiring":              NewHNHiringScraper(),
+		"weworkremotely":        NewWeWorkRemotelyScraper(),
+		"weworkremotelygolang":  NewWeWorkRemotelyScraper(),
+		"remotive":              NewRemotiveScraper(),
+		"arbeitnow":             NewArbeitnowScraper(),
+		"remoteok":              NewRemoteOKScraper(),
+		"builtin":               NewBuiltInScraper(),
+		"builtinremote":         NewBuiltInScraper(),
+		"flexboard":             NewFlexboardScraper(),
+		"vacancyglobalpro":      NewVacancyGlobalProScraper(),
+		"googlejobs":            NewGoogleJobsScraper(),
 		"googlejobscompanylist": NewGoogleJobsScraper(),
-		"remoterocketship":     NewRemoteRocketshipScraper(),
-		"linkedin":             NewLinkedInScraper(),
-		"glassdoor":            NewGlassdoorScraper(),
-		"bayt":                 NewBaytScraper(),
-		"bdjobs":               NewBDJobsScraper(),
-		"indeed":               NewIndeedScraper(),
-		"naukri":               NewNaukriScraper(),
-		"ziprecruiter":         NewZipRecruiterScraper(),
-		"realworkfromanywhere": NewRealWorkFromAnywhereScraper(),
+		"remoterocketship":      NewRemoteRocketshipScraper(),
+		"linkedin":              NewLinkedInScraper(),
+		"glassdoor":             NewGlassdoorScraper(),
+		"bayt":                  NewBaytScraper(),
+		"bdjobs":                NewBDJobsScraper(),
+		"indeed":                NewIndeedScraper(),
+		"naukri":                NewNaukriScraper(),
+		"ziprecruiter":          NewZipRecruiterScraper(),
+		"realworkfromanywhere":  NewRealWorkFromAnywhereScraper(),
 	}
 
 	return &Scheduler{
@@ -81,7 +89,6 @@ func (s *Scheduler) Start() {
 	}
 
 	s.cron.Start()
-	s.isRunning = true
 	log.Println("[Scheduler] Background cron scheduler started")
 
 	// Run all scrapers immediately on startup
@@ -91,7 +98,6 @@ func (s *Scheduler) Start() {
 // Stop stops the background scheduler
 func (s *Scheduler) Stop() {
 	s.cron.Stop()
-	s.isRunning = false
 	log.Println("[Scheduler] Scheduler stopped")
 }
 
@@ -111,11 +117,21 @@ func (s *Scheduler) TriggerAll() {
 	}
 }
 
-// PurgeStaleJobs deletes jobs older than 30 days from the database (excluding googlejobs)
+// PurgeStaleJobs deletes jobs older than 30 days from the database (excluding googlejobs).
+// Safe to call from every board run: it no-ops unless purgeInterval has elapsed
+// since the last actual purge.
 func (s *Scheduler) PurgeStaleJobs() {
+	s.purgeMu.Lock()
+	if time.Since(s.lastPurge) < purgeInterval {
+		s.purgeMu.Unlock()
+		return
+	}
+	s.lastPurge = time.Now()
+	s.purgeMu.Unlock()
+
 	cutoff := time.Now().AddDate(0, 0, -30)
 	res, err := s.db.Exec(`
-		DELETE FROM jobs 
+		DELETE FROM jobs
 		WHERE ((posted_at IS NOT NULL AND posted_at < $1)
 		   OR (posted_at IS NULL AND scraped_at < $1))
 		   AND source_board != 'googlejobs'
@@ -184,12 +200,12 @@ func (s *Scheduler) RunScraper(boardName, targetURL string) {
 
 // upsertJob saves a job to the database, skipping if hash already exists
 func (s *Scheduler) upsertJob(job *models.Job) error {
-	cleanTitle := truncateStr(strings.ToValidUTF8(strings.ReplaceAll(job.Title, "\x00", ""), ""), 250)
-	cleanCompany := truncateStr(strings.ToValidUTF8(strings.ReplaceAll(job.Company, "\x00", ""), ""), 250)
-	cleanDesc := strings.ToValidUTF8(strings.ReplaceAll(job.Description, "\x00", ""), "")
-	cleanLocation := truncateStr(job.Location, 250)
-	cleanCountry := truncateStr(job.Country, 90)
-	cleanBoard := truncateStr(job.SourceBoard, 90)
+	cleanTitle := truncateStr(sanitizeField(job.Title), 250)
+	cleanCompany := truncateStr(sanitizeField(job.Company), 250)
+	cleanDesc := sanitizeField(job.Description)
+	cleanLocation := truncateStr(sanitizeField(job.Location), 250)
+	cleanCountry := truncateStr(sanitizeField(job.Country), 90)
+	cleanBoard := truncateStr(sanitizeField(job.SourceBoard), 90)
 
 	_, err := s.db.Exec(`
 		INSERT INTO jobs (job_hash, title, company, location, country, source_url, source_board, description, salary_range, job_type, posted_at, scraped_at)
@@ -206,11 +222,19 @@ func (s *Scheduler) upsertJob(job *models.Job) error {
 	return err
 }
 
+// sanitizeField strips NUL bytes (PostgreSQL text columns reject them) and
+// replaces any remaining invalid UTF-8 sequences.
+func sanitizeField(s string) string {
+	return strings.ToValidUTF8(strings.ReplaceAll(s, "\x00", ""), "")
+}
+
+// truncateStr limits s to maxLen UTF-8 runes (not bytes) so the result stays
+// valid UTF-8 and fits the VARCHAR(n) columns that count characters.
 func truncateStr(s string, maxLen int) string {
-	if len(s) > maxLen {
-		return s[:maxLen]
+	if utf8.RuneCountInString(s) <= maxLen {
+		return s
 	}
-	return s
+	return string([]rune(s)[:maxLen])
 }
 
 // loadConfigs reads scraper configurations from database

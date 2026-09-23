@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"remotehunter/internal/models"
 	"remotehunter/internal/repository"
 	"time"
@@ -165,10 +166,12 @@ func (r *ResumeRepo) UpdateResumeText(ctx context.Context, text string) error {
 	if err == nil && curText != "" {
 		vID := uuid.New().String()
 		vLabel := fmt.Sprintf("Backup %s", time.Now().Format("Jan 02 15:04"))
-		_, _ = r.db.ExecContext(ctx, `
+		if _, err := r.db.ExecContext(ctx, `
 			INSERT INTO resume_versions (id, resume_id, label, snapshot_text, applied_at)
 			VALUES ($1, $2, $3, $4, NOW())
-		`, vID, resumeID, vLabel, curText)
+		`, vID, resumeID, vLabel, curText); err != nil {
+			log.Printf("[ResumeRepo] Failed to save backup version %s: %v", vID, err)
+		}
 	}
 
 	_, err = r.db.ExecContext(ctx, `UPDATE resumes SET edited_text = $1 WHERE id = $2`, text, resumeID)
@@ -296,18 +299,24 @@ func (r *ResumeRepo) UpdateResumeStructured(ctx context.Context, sr *models.Stru
 		return fmt.Errorf("no active resume found: %w", err)
 	}
 
-	// Backup current version
+	// Backup current version. Best-effort: a failed backup must not block the
+	// edit, but it is logged because silently losing the prior version means the
+	// user cannot revert.
 	var currentEditJSON []byte
-	_ = r.db.QueryRowContext(ctx, `SELECT edited_structured FROM resumes WHERE id = $1`, resumeID).Scan(&currentEditJSON)
+	if err := r.db.QueryRowContext(ctx, `SELECT edited_structured FROM resumes WHERE id = $1`, resumeID).Scan(&currentEditJSON); err != nil && err != sql.ErrNoRows {
+		log.Printf("[ResumeRepo] Could not read current structured resume for backup: %v", err)
+	}
 	if len(currentEditJSON) > 0 {
 		var currentStruct models.StructuredResume
 		if err := json.Unmarshal(currentEditJSON, &currentStruct); err == nil {
 			vID := uuid.New().String()
 			vLabel := fmt.Sprintf("Backup %s", time.Now().Format("Jan 02 15:04"))
-			_, _ = r.db.ExecContext(ctx, `
+			if _, err := r.db.ExecContext(ctx, `
 				INSERT INTO resume_versions (id, resume_id, label, snapshot_text, applied_at, snapshot_structured)
 				VALUES ($1, $2, $3, '', NOW(), $4)
-			`, vID, resumeID, vLabel, currentEditJSON)
+			`, vID, resumeID, vLabel, currentEditJSON); err != nil {
+				log.Printf("[ResumeRepo] Failed to save backup version %s: %v", vID, err)
+			}
 		}
 	}
 

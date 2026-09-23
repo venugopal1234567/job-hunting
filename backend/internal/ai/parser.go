@@ -13,6 +13,19 @@ func truncate(s string, max int) string {
 	return s[:max] + "..."
 }
 
+// extractJSONObject trims surrounding prose/fences from an LLM reply so the
+// outermost JSON object can be unmarshalled directly.
+func extractJSONObject(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if idx := strings.Index(raw, "{"); idx >= 0 {
+		raw = raw[idx:]
+	}
+	if idx := strings.LastIndex(raw, "}"); idx >= 0 {
+		raw = raw[:idx+1]
+	}
+	return raw
+}
+
 // stripHTMLForPrompt removes HTML tags, CSS styles, and SVG markup to optimize prompt token size
 func stripHTMLForPrompt(htmlStr string) string {
 	if !strings.Contains(htmlStr, "<") {
@@ -58,20 +71,6 @@ func renderFormattedTextGo(str string) string {
 	s = regexp.MustCompile(`\*\*(.*?)\*\*`).ReplaceAllString(s, "<strong>$1</strong>")
 	s = regexp.MustCompile(`(?i)&lt;strong&gt;(.*?)&lt;/strong&gt;`).ReplaceAllString(s, "<strong>$1</strong>")
 	s = regexp.MustCompile(`(?i)&lt;b&gt;(.*?)&lt;/b&gt;`).ReplaceAllString(s, "<strong>$1</strong>")
-	return s
-}
-
-func formatBulletActionVerbGo(str string) string {
-	if str == "" {
-		return ""
-	}
-	s := regexp.MustCompile(`^[•\-▪◦\s]+`).ReplaceAllString(str, "")
-	s = html.EscapeString(strings.TrimSpace(s))
-
-	s = regexp.MustCompile(`\*\*(.*?)\*\*`).ReplaceAllString(s, "<strong>$1</strong>")
-	s = regexp.MustCompile(`(?i)&lt;strong&gt;(.*?)&lt;/strong&gt;`).ReplaceAllString(s, "<strong>$1</strong>")
-	s = regexp.MustCompile(`(?i)&lt;b&gt;(.*?)&lt;/b&gt;`).ReplaceAllString(s, "<strong>$1</strong>")
-
 	return s
 }
 

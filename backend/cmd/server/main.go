@@ -54,7 +54,7 @@ func main() {
 	handler := api.NewHandler(jobRepo, resumeRepo, settingsRepo, aiClient, scheduler)
 
 	// Setup HTTP router and start server with extended timeouts (10 mins for AI requests)
-	router := api.SetupRouter(handler)
+	router := api.SetupRouter(handler, cfg.Server.AuthToken)
 
 	server := &http.Server{
 		Addr:         ":" + cfg.Server.Port,

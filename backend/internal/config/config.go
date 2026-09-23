@@ -14,6 +14,9 @@ type Config struct {
 
 type ServerConfig struct {
 	Port string
+	// AuthToken, when non-empty, is required as a bearer token on all API
+	// routes except /health. Empty leaves the API open (local development only).
+	AuthToken string
 }
 
 type DatabaseConfig struct {
@@ -34,7 +37,8 @@ type AIConfig struct {
 func Load() *Config {
 	return &Config{
 		Server: ServerConfig{
-			Port: getEnv("SERVER_PORT", "8080"),
+			Port:      getEnv("SERVER_PORT", "8080"),
+			AuthToken: getEnv("API_AUTH_TOKEN", ""),
 		},
 		Database: DatabaseConfig{
 			Host:     getEnv("DB_HOST", "localhost"),

@@ -112,10 +112,10 @@ func (s *GoogleJobsScraper) scrapeWithSerpAPI(targetURL string, apiKey string) (
 			log.Printf("[Scraper] GoogleJobs: SerpAPI request failed: %v", err)
 			continue
 		}
-		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
 			log.Printf("[Scraper] GoogleJobs: SerpAPI returned status %d", resp.StatusCode)
+			resp.Body.Close()
 			continue
 		}
 
@@ -132,7 +132,9 @@ func (s *GoogleJobsScraper) scrapeWithSerpAPI(targetURL string, apiKey string) (
 			} `json:"jobs_results"`
 		}
 
-		if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
+		err = json.NewDecoder(resp.Body).Decode(&results)
+		resp.Body.Close()
+		if err != nil {
 			log.Printf("[Scraper] GoogleJobs: failed to decode SerpAPI JSON: %v", err)
 			continue
 		}

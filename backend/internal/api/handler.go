@@ -31,12 +31,3 @@ func NewHandler(
 		scheduler:    scheduler,
 	}
 }
-
-// getActiveModel resolves the current AI model from settings repo, falling back to default
-func (h *Handler) getActiveModel() string {
-	model, err := h.settingsRepo.GetActiveModel(nil, h.aiClient.DefaultModel())
-	if err != nil || model == "" {
-		return h.aiClient.DefaultModel()
-	}
-	return model
-}

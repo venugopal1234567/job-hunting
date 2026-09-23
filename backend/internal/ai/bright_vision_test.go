@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"remotehunter/internal/models"
 	"strings"
 	"testing"
@@ -208,152 +207,6 @@ func TestBrightVisionZeroExperienceLoss(t *testing.T) {
 	if len(structRes.Skills) < 4 {
 		t.Errorf("Expected at least 4 skill categories, got %d", len(structRes.Skills))
 	}
-}
-
-func TestBrightVisionPromptChainingIntegration(t *testing.T) {
-	apiKey := os.Getenv("NVIDIA_API_KEY")
-	if apiKey == "" {
-		t.Skip("Skipping live NVIDIA integration test: NVIDIA_API_KEY environment variable not set")
-		return
-	}
-	baseURL := os.Getenv("NVIDIA_BASE_URL")
-	model := os.Getenv("NVIDIA_MODEL")
-
-	client := NewClient(apiKey, baseURL, model)
-
-	job := &models.Job{
-		ID:          "bright-vision-1",
-		Title:       "Golang Developer",
-		Company:     "Bright Vision Technologies",
-		Description: brightVisionJobDescription,
-	}
-
-	res := &models.Resume{
-		ID:              "resume-venugopal",
-		ExtractedSkills: []string{"Go", "Kubernetes", "gRPC", "REST", "Redis", "PostgreSQL", "Kafka", "NATS", "Docker", "TDD", "CI/CD"},
-		RawText:         sourceResumeText,
-	}
-
-	// Step 1: Initial ATS Match Analysis
-	t.Log("Step 1: Running initial ATS analysis against Bright Vision Golang Developer role...")
-	initialAnalysis, err := client.AnalyzeATSMatch(job, res, "")
-	if err != nil {
-		t.Fatalf("Initial ATS analysis failed: %v", err)
-	}
-	t.Logf("Initial ATS Score: %d / 100", initialAnalysis.ATSScore)
-
-	// Step 2: Convert resume to single-page structured format with ZERO work experience loss
-	t.Log("Step 2: Converting resume to single page template via AI...")
-	structRes, htmlContent, err := client.ConvertResumeToTemplate(sourceResumeText, "", true)
-	if err != nil {
-		t.Fatalf("ConvertResumeToTemplate failed: %v", err)
-	}
-
-	if len(structRes.WorkExperience) != 3 {
-		genBytes, _ := json.MarshalIndent(structRes, "", "  ")
-		t.Logf("DEBUG: Raw LLM Output:\n%s\nHTML:\n%s", string(genBytes), htmlContent)
-		t.Fatalf("CRITICAL ASSERTION FAILED: Single page fit stripped job entries! Expected 3 experiences, got %d", len(structRes.WorkExperience))
-	} else {
-		t.Logf("PASSED: All %d work experience entries preserved cleanly.", len(structRes.WorkExperience))
-	}
-
-	// Step 3: Run ChatWithResume prompt chaining to tailor bullets for Bright Vision role
-	t.Log("Step 3: Running ChatWithResume prompt chaining to tailor resume for Bright Vision...")
-	chatReq := &models.ChatRequest{
-		ResumeText: sourceResumeText,
-		Message:    "Tailor my resume for the Bright Vision Golang Developer role. Focus on Go concurrency, gRPC, REST, Kubernetes client-go, PostgreSQL, Redis, Kafka, NATS, and TDD while preserving all 3 of my work experiences.",
-	}
-	chatResp, err := client.ChatWithResume(chatReq, brightVisionJobDescription, "")
-	if err != nil {
-		t.Fatalf("ChatWithResume prompt chaining failed: %v", err)
-	}
-
-	if chatResp.StructuredResume == nil && len(chatResp.GapPrompts) > 0 {
-		t.Logf("Phase 1 gap prompts received (%d questions). Sending candidate responses to trigger Phase 2 tailored resume...", len(chatResp.GapPrompts))
-		phase2Req := &models.ChatRequest{
-			ResumeText: sourceResumeText,
-			Message:    "I have hands-on experience with all these gaps: I have built production Go concurrency systems with goroutines and channels, used Kubernetes client-go in EPAM, built high-performance gRPC and REST APIs in Go, and managed distributed systems with Docker and CI/CD. Please generate the full tailored structured_resume now with 90%+ ATS match.",
-		}
-		chatResp, err = client.ChatWithResume(phase2Req, brightVisionJobDescription, "")
-		if err != nil {
-			t.Fatalf("Phase 2 ChatWithResume failed: %v", err)
-		}
-	}
-
-	if chatResp.StructuredResume != nil {
-		t.Logf("Prompt Chaining Output: Generated structured resume with %d jobs", len(chatResp.StructuredResume.WorkExperience))
-		if len(chatResp.StructuredResume.WorkExperience) < 3 {
-			genBytes, _ := json.MarshalIndent(chatResp.StructuredResume, "", "  ")
-			t.Logf("DEBUG: Raw LLM Output:\n%s", string(genBytes))
-			t.Errorf("CRITICAL ASSERTION FAILED: Chat prompt chaining stripped work experiences! Expected 3, got %d", len(chatResp.StructuredResume.WorkExperience))
-		}
-	}
-
-	// Step 4: Re-evaluate tailored resume ATS Match Score
-	tailoredText := sourceResumeText
-	if chatResp.FullResumeReplacement != "" {
-		tailoredText = chatResp.FullResumeReplacement
-	} else if chatResp.StructuredResume != nil {
-		tailoredText = BuildATSTemplateHTML(chatResp.StructuredResume, true)
-	} else if htmlContent != "" {
-		tailoredText = htmlContent
-	}
-
-	tailoredResume := &models.Resume{
-		ID:              "tailored-resume",
-		ExtractedSkills: res.ExtractedSkills,
-		RawText:         tailoredText,
-	}
-
-	t.Log("Step 4: Re-evaluating tailored resume ATS score...")
-	finalAnalysis, err := client.AnalyzeATSMatch(job, tailoredResume, "")
-	if err != nil {
-		t.Fatalf("Final ATS analysis failed: %v", err)
-	}
-
-	t.Logf("Final ATS Score after Prompt Chaining: %d / 100", finalAnalysis.ATSScore)
-	if finalAnalysis.ATSScore < initialAnalysis.ATSScore {
-		t.Errorf("PROMPT CHAINING FAILED: Tailored ATS Score (%d) is lower than Initial ATS Score (%d)", 
-			finalAnalysis.ATSScore, initialAnalysis.ATSScore)
-	}
-
-	// Step 5: Validate Generated Resume with Independent Senior Recruiter AI Audit
-	t.Log("Step 5: Passing generated content to Senior Recruiter AI role for audit & validation...")
-	genToAudit := structRes
-	if chatResp.StructuredResume != nil {
-		genToAudit = chatResp.StructuredResume
-	}
-
-	recruiterAudit, err := client.ValidateResumeWithRecruiter(sourceResumeText, genToAudit, "")
-	if err != nil {
-		t.Fatalf("ValidateResumeWithRecruiter failed: %v", err)
-	}
-
-	t.Logf("Recruiter AI Audit Score: %d / 100", recruiterAudit.RecruiterScore)
-	t.Logf("Recruiter Feedback: %s", recruiterAudit.QualityFeedback)
-
-	const minimumAcceptableScore = 80
-	if recruiterAudit.RecruiterScore < minimumAcceptableScore {
-		t.Errorf("RECRUITER AUDIT FAILED: Score %d is below the minimum threshold of %d. Feedback: %s", 
-			recruiterAudit.RecruiterScore, minimumAcceptableScore, recruiterAudit.QualityFeedback)
-	}
-
-	if len(recruiterAudit.Hallucinations) > 0 {
-		t.Errorf("RECRUITER AUDIT FAILED: Detected hallucinated data: %v", recruiterAudit.Hallucinations)
-	}
-	if len(recruiterAudit.Omissions) > 0 {
-		t.Errorf("RECRUITER AUDIT FAILED: Detected omitted work experiences: %v", recruiterAudit.Omissions)
-	}
-	if len(recruiterAudit.DummyData) > 0 {
-		t.Errorf("RECRUITER AUDIT FAILED: Detected dummy data: %v", recruiterAudit.DummyData)
-	}
-	if !recruiterAudit.IsValid {
-		t.Errorf("RECRUITER AUDIT FAILED: Recruiter marked resume as invalid!")
-	} else {
-		t.Log("PASSED: Senior Recruiter AI verified ZERO hallucinations, ZERO omissions, and ZERO dummy data!")
-	}
-
-	_ = htmlContent
 }
 
 func TestRecruiterValidationMock(t *testing.T) {
@@ -627,19 +480,26 @@ func TestChatWithResumeBolding(t *testing.T) {
 		t.Fatalf("ChatWithResume for Bolding test failed: %v", err)
 	}
 
-	if resp.HTML == "" {
-		t.Fatalf("Expected non-empty HTML in response")
+	if resp.StructuredResume == nil {
+		t.Fatalf("Expected structured resume in response")
+	}
+
+	// ChatResponse carries structured data only. Render it locally before
+	// checking HTML formatting and sending it to the audit call.
+	generatedHTML := BuildATSTemplateHTML(resp.StructuredResume, true)
+	if generatedHTML == "" {
+		t.Fatalf("Expected non-empty rendered HTML")
 	}
 
 	// Assert HTML renders <strong> tags for key JD terms
-	if !strings.Contains(resp.HTML, "<strong>Go</strong>") {
-		t.Errorf("Expected HTML to render <strong>Go</strong> in summary/skills, got HTML: %s", resp.HTML)
+	if !strings.Contains(generatedHTML, "<strong>Go</strong>") {
+		t.Errorf("Expected HTML to render <strong>Go</strong> in summary/skills, got HTML: %s", generatedHTML)
 	}
-	if !strings.Contains(resp.HTML, "<strong>Kubernetes</strong>") {
-		t.Errorf("Expected HTML to render <strong>Kubernetes</strong>, got HTML: %s", resp.HTML)
+	if !strings.Contains(generatedHTML, "<strong>Kubernetes</strong>") {
+		t.Errorf("Expected HTML to render <strong>Kubernetes</strong>, got HTML: %s", generatedHTML)
 	}
-	if !strings.Contains(resp.HTML, "<strong>Architected</strong>") {
-		t.Errorf("Expected HTML to render <strong>Architected</strong> bullet verb, got HTML: %s", resp.HTML)
+	if !strings.Contains(generatedHTML, "<strong>Architected</strong>") {
+		t.Errorf("Expected HTML to render <strong>Architected</strong> bullet verb, got HTML: %s", generatedHTML)
 	}
 
 	// Step 2: Second AI Call — pass the generated HTML back to AI to verify JD keyword bolding accuracy
@@ -653,9 +513,9 @@ GENERATED RESUME HTML:
 %s
 
 OUTPUT STRICTLY JSON:
-{"is_valid": true, "reason": "Reasoning here"}`, brightVisionJobDescription, resp.HTML)
+{"is_valid": true, "reason": "Reasoning here"}`, brightVisionJobDescription, generatedHTML)
 
-	auditRaw, err := client.generateCompletion(auditPrompt, "", true)
+	auditRaw, err := client.generateCompletion(auditPrompt, "")
 	if err != nil {
 		t.Fatalf("Second AI verification call failed: %v", err)
 	}

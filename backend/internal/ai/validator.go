@@ -6,7 +6,6 @@ import (
 	"log"
 	"remotehunter/internal/ai/prompts"
 	"remotehunter/internal/models"
-	"strings"
 )
 
 // ValidateResumeWithRecruiter acts as an independent Senior Technical Recruiter auditing the generated resume against original source resume text
@@ -22,18 +21,12 @@ func (c *Client) ValidateResumeWithRecruiter(originalText string, generated *mod
 
 	prompt := fmt.Sprintf(prompts.RecruiterValidationPromptTemplate, truncate(originalText, 500000), string(genJSON))
 
-	rawResponse, err := c.generateCompletion(prompt, modelOverride, true)
+	rawResponse, err := c.generateCompletion(prompt, modelOverride)
 	if err != nil {
 		return nil, fmt.Errorf("recruiter validation failed: %w", err)
 	}
 
-	rawResponse = strings.TrimSpace(rawResponse)
-	if idx := strings.Index(rawResponse, "{"); idx >= 0 {
-		rawResponse = rawResponse[idx:]
-	}
-	if idx := strings.LastIndex(rawResponse, "}"); idx >= 0 {
-		rawResponse = rawResponse[:idx+1]
-	}
+	rawResponse = extractJSONObject(rawResponse)
 
 	var valResult models.RecruiterValidationResult
 	if err := json.Unmarshal([]byte(rawResponse), &valResult); err != nil {
