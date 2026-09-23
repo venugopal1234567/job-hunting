@@ -26,13 +26,16 @@ func (r *JobRepo) GetJobs(ctx context.Context, filter repository.JobFilter) ([]m
 		where = append(where, fmt.Sprintf("(posted_at >= NOW() - INTERVAL '%d days' OR posted_at IS NULL AND scraped_at >= NOW() - INTERVAL '%d days')", filter.Days, filter.Days))
 	}
 
+	// Match either column: boards like builtin put the work mode ("Remote",
+	// "In-Office or Remote") in location and the country only in country, so
+	// filtering on location alone hid every one of their postings.
 	if filter.Country != "" {
 		countryList := strings.Split(filter.Country, ",")
 		var countryConditions []string
 		for _, c := range countryList {
 			c = strings.TrimSpace(c)
 			if c != "" {
-				countryConditions = append(countryConditions, fmt.Sprintf("LOWER(location) LIKE $%d", argIdx))
+				countryConditions = append(countryConditions, fmt.Sprintf("(LOWER(country) LIKE $%d OR LOWER(location) LIKE $%d)", argIdx, argIdx))
 				args = append(args, "%"+strings.ToLower(c)+"%")
 				argIdx++
 			}
@@ -69,7 +72,7 @@ func (r *JobRepo) GetJobs(ctx context.Context, filter repository.JobFilter) ([]m
 
 	offset := (filter.Page - 1) * filter.Limit
 	query := fmt.Sprintf(`
-		SELECT id, title, company, location, description, source_url, source_board, posted_at, salary_range, scraped_at
+		SELECT id, title, company, location, country, description, source_url, source_board, posted_at, salary_range, scraped_at
 		FROM jobs
 		WHERE %s
 		ORDER BY scraped_at DESC NULLS LAST, posted_at DESC NULLS LAST
@@ -87,7 +90,7 @@ func (r *JobRepo) GetJobs(ctx context.Context, filter repository.JobFilter) ([]m
 	for rows.Next() {
 		var j models.Job
 		err := rows.Scan(
-			&j.ID, &j.Title, &j.Company, &j.Location, &j.Description,
+			&j.ID, &j.Title, &j.Company, &j.Location, &j.Country, &j.Description,
 			&j.SourceURL, &j.SourceBoard, &j.PostedAt, &j.SalaryRange, &j.ScrapedAt,
 		)
 		if err != nil {
