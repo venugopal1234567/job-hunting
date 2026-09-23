@@ -92,6 +92,12 @@ func (s *ArbeitnowScraper) Scrape(targetURL string) ([]models.Job, error) {
 			desc = item.Title + " at " + item.CompanyName
 		}
 
+		// The API ignores its own ?search= parameter, so every remote job on the
+		// board arrives here unfiltered; keep only Go roles.
+		if !isGoRole(item.Title) {
+			continue
+		}
+
 		job := &models.Job{
 			Title:       item.Title,
 			Company:     item.CompanyName,

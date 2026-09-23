@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/chromedp/chromedp"
 )
 
 // FlexboardScraper scrapes jobs from Flexboard
@@ -27,6 +29,37 @@ func NewFlexboardScraper() *FlexboardScraper {
 
 func (s *FlexboardScraper) Name() string { return "flexboard" }
 
+// fetchPage loads a Flexboard page. The listing sits behind a Cloudflare
+// managed challenge ("cf-mitigated: challenge", HTTP 403) that a plain HTTP
+// client cannot clear, so it is driven in the headless browser and the
+// post-challenge DOM is returned.
+func (s *FlexboardScraper) fetchPage(targetURL string) (string, error) {
+	ctx, cancel := newHeadlessContext(120 * time.Second)
+	defer cancel()
+
+	var htmlStr, pageTitle string
+	err := chromedp.Run(ctx,
+		chromedp.Evaluate(`Object.defineProperty(navigator, 'webdriver', {get: () => undefined})`, nil),
+		chromedp.Navigate(targetURL),
+		chromedp.Sleep(25*time.Second), // CF managed challenge needs JS runtime before it clears
+		chromedp.Title(&pageTitle),
+		chromedp.OuterHTML("html", &htmlStr, chromedp.ByQuery),
+	)
+	if err != nil {
+		return "", fmt.Errorf("flexboard chromedp: %w", err)
+	}
+	if len(htmlStr) < 200 {
+		return "", fmt.Errorf("flexboard: page body empty for %s (title=%q)", targetURL, pageTitle)
+	}
+	// A still-unsolved Cloudflare challenge renders a stub page rather than the
+	// listing, which would otherwise look like "0 jobs found" and hide the fact
+	// that the whole site is unreachable.
+	if strings.Contains(htmlStr, "challenge-platform") || strings.Contains(strings.ToLower(pageTitle), "just a moment") {
+		return "", fmt.Errorf("flexboard: Cloudflare challenge not solved for %s (title=%q)", targetURL, pageTitle)
+	}
+	return htmlStr, nil
+}
+
 func (s *FlexboardScraper) Scrape(targetURL string) ([]models.Job, error) {
 	if targetURL == "" {
 		targetURL = "https://flexboard.9y.liveblog365.com/?search=golang"
@@ -38,29 +71,11 @@ func (s *FlexboardScraper) Scrape(targetURL string) ([]models.Job, error) {
 	}
 	baseURL := parsedBase.Scheme + "://" + parsedBase.Host
 
-	req, err := http.NewRequest("GET", targetURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("flexboard fetch: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("flexboard: HTTP %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
+	htmlStr, err := s.fetchPage(targetURL)
 	if err != nil {
 		return nil, err
 	}
 
-	htmlStr := string(body)
 	parts := strings.Split(htmlStr, `href="/job/`)
 
 	reTitle := regexp.MustCompile(`(?s)<h3 class="job-title">([^<]+)</h3>`)

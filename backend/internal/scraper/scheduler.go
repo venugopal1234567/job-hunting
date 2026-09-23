@@ -213,8 +213,16 @@ func (s *Scheduler) upsertJob(job *models.Job) error {
 		ON CONFLICT (job_hash) DO UPDATE SET
 			description = CASE WHEN LENGTH(EXCLUDED.description) > LENGTH(jobs.description) THEN EXCLUDED.description ELSE jobs.description END,
 			source_url = EXCLUDED.source_url,
-			posted_at = EXCLUDED.posted_at,
-			scraped_at = NOW()`,
+			-- A re-scrape must never erase a posted_at we already know, nor make a
+			-- stale posting look new: scraped_at only advances when the board
+			-- reports a posting date we did not already have, or a newer one.
+			posted_at = COALESCE(EXCLUDED.posted_at, jobs.posted_at),
+			scraped_at = CASE
+				WHEN EXCLUDED.posted_at IS NOT NULL
+					AND (jobs.posted_at IS NULL OR EXCLUDED.posted_at > jobs.posted_at)
+				THEN NOW()
+				ELSE jobs.scraped_at
+			END`,
 		job.JobHash, cleanTitle, cleanCompany, cleanLocation, cleanCountry,
 		job.SourceURL, cleanBoard, cleanDesc, job.SalaryRange,
 		job.JobType, job.PostedAt,

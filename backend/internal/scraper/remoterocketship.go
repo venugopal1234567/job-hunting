@@ -212,47 +212,37 @@ func parseRemoteRocketshipDate(dateStr string) *time.Time {
 	}
 	dateStr = strings.TrimSpace(dateStr)
 
-	var parsed time.Time
-	var err error
-
-	// If it contains a year (four digits)
-	hasYear := false
-	for _, y := range []string{"2024", "2025", "2026", "2027"} {
-		if strings.Contains(dateStr, y) {
-			hasYear = true
-			break
-		}
+	// Card labels come in three shapes: "September 15" (no year), "Sep 15, 2026"
+	// (with year) and a relative "6 days ago". time.Parse leaves the year at 0
+	// when the format omits it, so one format list covers both absolute shapes.
+	formats := []string{
+		"January 2, 2006",
+		"Jan 2, 2006",
+		"January 2",
+		"Jan 2",
+		"2006-01-02",
 	}
-
-	if hasYear {
-		// Try standard formats with year
-		formats := []string{
-			"January 2, 2006",
-			"Jan 2, 2006",
-			"2006-01-02",
+	for _, f := range formats {
+		parsed, err := time.Parse(f, dateStr)
+		if err != nil {
+			continue
 		}
-		for _, f := range formats {
-			if parsed, err = time.Parse(f, dateStr); err == nil {
-				return &parsed
+		if parsed.Year() == 0 {
+			// Year absent from the label: assume the current year, and roll back
+			// when that lands in the future (a Dec date read in Jan is last year).
+			parsed = parsed.AddDate(time.Now().Year(), 0, 0)
+			if parsed.After(time.Now()) {
+				parsed = parsed.AddDate(-1, 0, 0)
 			}
 		}
-	} else {
-		// Missing year. Append current year.
-		currentYear := time.Now().Year()
-		dateWithYear := fmt.Sprintf("%s, %d", dateStr, currentYear)
-		formats := []string{
-			"January 2, 2006",
-			"Jan 2, 2006",
-		}
-		for _, f := range formats {
-			if parsed, err = time.Parse(f, dateWithYear); err == nil {
-				// If parsed date is in the future compared to now (e.g., today is Jan and date says Dec), it might be last year
-				if parsed.After(time.Now()) {
-					parsed = parsed.AddDate(-1, 0, 0)
-				}
-				return &parsed
-			}
-		}
+		return &parsed
 	}
+
+	// Relative labels ("6 days ago") reuse the shared parser rather than
+	// returning nil, which the jobs query would bucket as freshly scraped.
+	if rel := parseRelativeDate(dateStr); rel != nil {
+		return rel
+	}
+
 	return nil
 }

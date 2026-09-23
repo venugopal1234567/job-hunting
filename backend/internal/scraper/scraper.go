@@ -75,3 +75,11 @@ func NormalizeJob(job *models.Job) {
 	job.IsActive = true
 	job.JobHash = ComputeJobHash(job.Title, job.Company, job.SourceURL)
 }
+
+// isGoRole reports whether a posting is a Go role, judged on the title. It
+// reuses the word-boundary regex from remoteok.go, which excludes non-Go titles
+// that merely contain the letters (e.g. "Going" or a "go-to-market" manager).
+// For boards whose API returns unfiltered results.
+func isGoRole(title string) bool {
+	return goWordRegex.MatchString(title) && !excludeTitleRegex.MatchString(title)
+}

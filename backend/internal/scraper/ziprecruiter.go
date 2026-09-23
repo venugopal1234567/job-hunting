@@ -28,6 +28,7 @@ func (s *ZipRecruiterScraper) Scrape(targetURL string) ([]models.Job, error) {
 
 	urls := strings.Split(targetURL, "|")
 	var allJobs []models.Job
+	var countries []string
 	seen := make(map[string]bool)
 
 	for _, u := range urls {
@@ -112,6 +113,7 @@ func (s *ZipRecruiterScraper) Scrape(targetURL string) ([]models.Job, error) {
 			}
 
 			country := inferCountryZipRecruiter(rj.Location)
+			countries = append(countries, rj.Location+" => "+country)
 			desc := rj.Description
 			if desc == "Estimated pay" || desc == "" {
 				desc = rj.Title + " at " + rj.Company
@@ -139,7 +141,7 @@ func (s *ZipRecruiterScraper) Scrape(targetURL string) ([]models.Job, error) {
 		}
 	}
 
-	log.Printf("[Scraper] ZipRecruiter: scraped %d unique jobs", len(allJobs))
+	log.Printf("[Scraper] ZipRecruiter: scraped %d unique jobs (%s)", len(allJobs), strings.Join(countries, ", "))
 	return allJobs, nil
 }
 
@@ -160,9 +162,36 @@ func inferCountryZipRecruiter(location string) string {
 		return "India"
 	}
 
-	if strings.Contains(loc, "ca") || strings.Contains(loc, "canada") {
+	if strings.Contains(loc, "canada") || hasTrailingRegionCode(loc, canadaProvinceCodes) {
 		return "Canada"
 	}
 
+	if strings.Contains(loc, "usa") || strings.Contains(loc, "united states") || strings.Contains(loc, "us only") ||
+		hasTrailingRegionCode(loc, usStateCodes) {
+		return "US"
+	}
+
+	// ponytail: an unrecognised location still falls through to "US" because
+	// ZipRecruiter is US-centric and the scheduler drops US rows. Teach this
+	// function the country before pointing the board at a non-US search.
 	return "US"
+}
+
+// Two-letter region codes. Matching a bare "ca" substring instead (as this
+// function used to) labels Chicago, Cary and "Fremont, CA" all the same way.
+const (
+	usStateCodes        = "al ak az ar ca co ct de dc fl ga hi id il in ia ks ky la me md ma mi mn ms mo mt ne nv nh nj nm ny nc nd oh ok or pa ri sc sd tn tx ut vt va wa wv wi wy"
+	canadaProvinceCodes = "on bc ab qc ns mb sk nb nl pe yt nt nu"
+)
+
+// hasTrailingRegionCode reports whether loc ends in ", xx" or " xx", where xx is
+// one of the space-separated codes.
+func hasTrailingRegionCode(loc, codes string) bool {
+	if len(loc) < 4 {
+		return false
+	}
+	if sep := loc[len(loc)-3]; sep != ',' && sep != ' ' {
+		return false
+	}
+	return strings.Contains(" "+codes+" ", " "+loc[len(loc)-2:]+" ")
 }

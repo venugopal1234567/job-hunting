@@ -120,6 +120,7 @@ func (s *GoogleJobsScraper) scrapeWithSerpAPI(targetURL string, apiKey string) (
 		}
 
 		var results struct {
+			Error       string `json:"error"`
 			JobsResults []struct {
 				Title              string `json:"title"`
 				CompanyName        string `json:"company_name"`
@@ -136,6 +137,14 @@ func (s *GoogleJobsScraper) scrapeWithSerpAPI(targetURL string, apiKey string) (
 		resp.Body.Close()
 		if err != nil {
 			log.Printf("[Scraper] GoogleJobs: failed to decode SerpAPI JSON: %v", err)
+			continue
+		}
+
+		// SerpAPI reports failures (exhausted quota, bad key) as HTTP 200 with an
+		// "error" field and no jobs_results. Without this check the board looks
+		// healthy while returning nothing.
+		if results.Error != "" {
+			log.Printf("[Scraper] GoogleJobs: SerpAPI error: %s", results.Error)
 			continue
 		}
 		log.Printf("[Scraper] GoogleJobs DEBUG: SerpAPI returned %d jobs", len(results.JobsResults))
