@@ -65,6 +65,7 @@ function App() {
     };
   });
   const [apiHealthy, setApiHealthy] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const { jobs, total, loading, error, refresh, triggerManualScrape, scraping } = useJobs(currentFilters);
   const { resume } = useResume();
@@ -83,9 +84,14 @@ function App() {
   }, [activeTab]);
 
   const handleFilter = useCallback((params: JobFilterParams) => {
-    setCurrentFilters(params);
-    refresh(params);
-  }, [refresh]);
+    setCurrentFilters(prev => ({ ...prev, ...params, page: 1 }));
+    setCurrentPage(1);
+  }, []);
+
+  const handlePageChange = useCallback((page: number) => {
+    setCurrentPage(page);
+    setCurrentFilters(prev => ({ ...prev, page }));
+  }, []);
 
   const handleEditResume = useCallback((job: Job) => {
     setSelectedJob(job);   // keep job selected for ATS context
@@ -183,6 +189,28 @@ function App() {
                     <JobCard key={job.id} job={job} onClick={setViewingJob} onEditResume={handleEditResume} />
                   ))}
                 </div>
+
+                {total > 20 && (
+                  <div className="flex items-center justify-center gap-3 pt-2">
+                    <button
+                      onClick={() => handlePageChange(currentPage - 1)}
+                      disabled={currentPage <= 1}
+                      className="btn-ghost text-xs px-4 py-2 rounded-full disabled:opacity-40"
+                    >
+                      ← Prev
+                    </button>
+                    <span className="text-sm text-on-surface-variant font-medium">
+                      Page {currentPage} of {Math.ceil(total / (currentFilters.limit ?? 20))}
+                    </span>
+                    <button
+                      onClick={() => handlePageChange(currentPage + 1)}
+                      disabled={currentPage * (currentFilters.limit ?? 20) >= total}
+                      className="btn-ghost text-xs px-4 py-2 rounded-full disabled:opacity-40"
+                    >
+                      Next →
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>

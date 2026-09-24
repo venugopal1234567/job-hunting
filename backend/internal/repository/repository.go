@@ -7,11 +7,13 @@ import (
 
 // JobFilter defines options for querying jobs
 type JobFilter struct {
-	Skills  string
-	Days    int
-	Country string
-	Page    int
-	Limit   int
+	Skills       string
+	Days         int
+	Country      string
+	Page         int
+	Limit        int
+	OnlyEnabled  bool
+	Sources      []string
 }
 
 // JobRepository handles data operations for jobs
@@ -44,4 +46,6 @@ type SettingsRepository interface {
 	SetSetting(ctx context.Context, key, value string) error
 	GetAllSettings(ctx context.Context) (map[string]string, error)
 	GetActiveModel(ctx context.Context, defaultModel string) (string, error)
+	GetScraperConfigs(ctx context.Context) ([]models.ScraperConfig, error)
+	UpdateScraperConfig(ctx context.Context, cfg models.ScraperConfig) error
 }

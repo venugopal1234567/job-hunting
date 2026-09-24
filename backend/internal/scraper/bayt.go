@@ -53,21 +53,37 @@ func (s *BaytScraper) Scrape(targetURL string) ([]models.Job, error) {
     const href = titleEl.getAttribute('href');
     const jobURL = href ? new URL(href, window.location.href).href : '';
 
-    const companyEl = card.querySelector('.job-company-location-wrapper a.t-bold') || card.querySelector('a.t-default.t-bold');
+    const companyEl = card.querySelector('.job-company-location-wrapper a.t-bold') || card.querySelector('a.t-default.t-bold') || card.querySelector('.job-company-location-wrapper div a.t-default');
     const company = companyEl ? companyEl.textContent.trim() : 'N/A';
 
-    const locEl = card.querySelector('.job-company-location-wrapper div.t-mute span') || card.querySelector('a.t-mute span');
-    const location = locEl ? locEl.textContent.trim() : 'Remote';
+    let location = '';
+    const locSpan = card.querySelector('.jb-tags .jb-label-location span') || card.querySelector('.job-company-location-wrapper div.t-mute span');
+    if (locSpan) {
+      location = locSpan.textContent.trim();
+    }
+    if (!location && card.querySelector('.jb-tags .jb-label-remote')) {
+      location = 'Remote';
+    }
+    if (!location) {
+      location = 'Remote';
+    }
 
     const descEl = card.querySelector('div.jb-descr');
     const description = descEl ? descEl.textContent.trim() : '';
+
+    const dateEl = card.querySelector('.jb-date span');
+    let postedTs = 0;
+    if (dateEl && dateEl.getAttribute('data-automation-jobactivedate')) {
+      postedTs = parseInt(dateEl.getAttribute('data-automation-jobactivedate'), 10) || 0;
+    }
 
     results.push({
       title: title,
       company: company,
       url: jobURL,
       location: location,
-      description: description
+      description: description,
+      posted_ts: postedTs
     });
   });
   return JSON.stringify(results);
@@ -86,6 +102,7 @@ func (s *BaytScraper) Scrape(targetURL string) ([]models.Job, error) {
 			URL         string `json:"url"`
 			Location    string `json:"location"`
 			Description string `json:"description"`
+			PostedTs    int64  `json:"posted_ts"`
 		}
 
 		var rawJobs []rawJob
@@ -117,6 +134,11 @@ func (s *BaytScraper) Scrape(targetURL string) ([]models.Job, error) {
 				Location:    rj.Location,
 				Country:     country,
 				JobType:     "Full Time",
+			}
+
+			if rj.PostedTs > 0 {
+				t := time.Unix(rj.PostedTs, 0).UTC()
+				job.PostedAt = &t
 			}
 
 			NormalizeJob(job)

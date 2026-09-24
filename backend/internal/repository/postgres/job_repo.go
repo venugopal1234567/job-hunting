@@ -61,6 +61,47 @@ func (r *JobRepo) GetJobs(ctx context.Context, filter repository.JobFilter) ([]m
 		}
 	}
 
+	if filter.OnlyEnabled {
+		// Filter to only boards the user has enabled in Settings. The
+		// setting is stored as a comma-delimited list in app_settings.
+		rows, err := r.db.QueryContext(ctx, `SELECT value FROM app_settings WHERE key = 'active_sources'`)
+		if err == nil {
+			var settingVal string
+			if rows.Next() {
+				_ = rows.Scan(&settingVal)
+			}
+			rows.Close()
+			if settingVal != "" {
+				srcs := strings.Split(settingVal, ",")
+				for _, src := range srcs {
+					src = strings.TrimSpace(src)
+					if src == "" {
+						continue
+					}
+					where = append(where, fmt.Sprintf("source_board = $%d", argIdx))
+					args = append(args, src)
+					argIdx++
+				}
+			}
+		}
+	}
+
+	if len(filter.Sources) > 0 {
+		var srcConds []string
+		for _, s := range filter.Sources {
+			s = strings.TrimSpace(s)
+			if s == "" {
+				continue
+			}
+			srcConds = append(srcConds, fmt.Sprintf("source_board = $%d", argIdx))
+			args = append(args, s)
+			argIdx++
+		}
+		if len(srcConds) > 0 {
+			where = append(where, "("+strings.Join(srcConds, " OR ")+")")
+		}
+	}
+
 	whereClause := strings.Join(where, " AND ")
 
 	var total int

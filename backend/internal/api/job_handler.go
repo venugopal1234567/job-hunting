@@ -6,6 +6,7 @@ import (
 	"remotehunter/internal/models"
 	"remotehunter/internal/repository"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -18,6 +19,18 @@ func (h *Handler) GetJobs(c *gin.Context) {
 	country := c.DefaultQuery("country", "")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	onlyEnabled := c.DefaultQuery("only_enabled", "false") == "true"
+	sourcesParam := c.DefaultQuery("sources", "")
+
+	var sources []string
+	if sourcesParam != "" {
+		for _, s := range strings.Split(sourcesParam, ",") {
+			s = strings.TrimSpace(s)
+			if s != "" {
+				sources = append(sources, s)
+			}
+		}
+	}
 
 	if page < 1 {
 		page = 1
@@ -27,11 +40,13 @@ func (h *Handler) GetJobs(c *gin.Context) {
 	}
 
 	filter := repository.JobFilter{
-		Skills:  skillsParam,
-		Days:    days,
-		Country: country,
-		Page:    page,
-		Limit:   limit,
+		Skills:      skillsParam,
+		Days:        days,
+		Country:     country,
+		Page:        page,
+		Limit:       limit,
+		OnlyEnabled: onlyEnabled,
+		Sources:     sources,
 	}
 
 	jobs, total, err := h.jobRepo.GetJobs(c.Request.Context(), filter)
