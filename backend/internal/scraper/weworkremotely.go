@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net/http"
@@ -44,6 +45,21 @@ func (s *WeWorkRemotelyScraper) Scrape(targetURL string) ([]models.Job, error) {
 	return s.scrapeRSS(targetURL)
 }
 
+// programmingCategories includes the categories WeWorkRemotely uses for
+// technical/engineering roles. The site has separate category feeds but they
+// are frequently stale; the main /remote-jobs.rss is kept fresh and we filter
+// client-side to avoid ingesting sales/marketing rows.
+var programmingCategories = map[string]bool{
+	"Full-Stack Programming": true,
+	"Back-End Programming":   true,
+	"Front-End Programming":  true,
+	"DevOps and Sysadmin":    true,
+}
+
+func isProgrammingCategory(cat string) bool {
+	return programmingCategories[strings.TrimSpace(cat)]
+}
+
 func (s *WeWorkRemotelyScraper) scrapeRSS(targetURL string) ([]models.Job, error) {
 	req, err := http.NewRequest("GET", targetURL, nil)
 	if err != nil {
@@ -67,6 +83,7 @@ func (s *WeWorkRemotelyScraper) scrapeRSS(targetURL string) ([]models.Job, error
 		Link    string `xml:"link"`
 		PubDate string `xml:"pubDate"`
 		Region  string `xml:"region"`
+		Category string `xml:"category"`
 		Description struct {
 			Content string `xml:",cdata"`
 		} `xml:"description"`
@@ -83,6 +100,9 @@ func (s *WeWorkRemotelyScraper) scrapeRSS(targetURL string) ([]models.Job, error
 
 	var jobs []models.Job
 	for _, item := range rss.Items {
+		if !isProgrammingCategory(item.Category) {
+			continue
+		}
 		title := item.Title
 		company := "Unknown"
 
@@ -370,8 +390,11 @@ func parseWWRRegion(region string) string {
 	}
 }
 
-// stripHTML removes HTML tags from a string — shared utility used by multiple scrapers
+// stripHTML removes HTML tags from a string — shared utility used by multiple scrapers.
+// Also unescapes entities (`&amp;`, `&#x2F;`, etc.) so company names like
+// `Abnormal Security ( https://abnormalsecurity.com/ )` don't leak into rows.
 func stripHTML(s string) string {
+	s = html.UnescapeString(s)
 	var result strings.Builder
 	inTag := false
 	for _, r := range s {
