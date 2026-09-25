@@ -66,12 +66,23 @@ func (s *ZipRecruiterScraper) Scrape(targetURL string) ([]models.Job, error) {
     const descEl = card.querySelector('p[class*="text-secondary"]');
     const description = descEl ? descEl.textContent.trim() : '';
 
+    // ZipRecruiter shows "Posted X days ago" / "Today" / "New" in an
+    // unlabelled <p class="text-primary normal-case text-body-md">.
+    const DATE_RE = /(\d+\s*(hour|day|week|month)s?\s*ago|just posted|posted \d|today|yesterday)/i;
+    const dateEl = card.querySelector('[data-test="job-age"]') ||
+                   card.querySelector('.job-age') ||
+                   card.querySelector('span[class*="age"]') ||
+                   Array.from(card.querySelectorAll('p, span, div'))
+                     .find(n => n.children.length === 0 && DATE_RE.test(n.textContent));
+    const dateStr = dateEl ? (dateEl.getAttribute('data-date-posted') || dateEl.textContent.trim()) : '';
+
     results.push({
       title: title,
       company: company,
       url: jobURL,
       location: location,
-      description: description
+      description: description,
+      posted_at: dateStr
     });
   });
   return JSON.stringify(results);
@@ -99,6 +110,7 @@ func (s *ZipRecruiterScraper) Scrape(targetURL string) ([]models.Job, error) {
 			URL         string `json:"url"`
 			Location    string `json:"location"`
 			Description string `json:"description"`
+			PostedAt    string `json:"posted_at"`
 		}
 
 		var rawJobs []rawJob
@@ -131,6 +143,10 @@ func (s *ZipRecruiterScraper) Scrape(targetURL string) ([]models.Job, error) {
 				Location:    rj.Location,
 				Country:     country,
 				JobType:     "Full Time",
+			}
+
+			if postedAt := parseRelativeDate(rj.PostedAt); postedAt != nil {
+				job.PostedAt = postedAt
 			}
 
 			NormalizeJob(job)

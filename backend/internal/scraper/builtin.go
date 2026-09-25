@@ -241,24 +241,32 @@ func parseRelativeDate(dateStr string) *time.Time {
 		return &t
 	}
 
+	// Long form: "3 days ago", "2+ weeks ago".
 	re := regexp.MustCompile(`(\d+)\+?\s*(minute|hour|day|week|month|year)s?\s*ago`)
 	m := re.FindStringSubmatch(lower)
+	if len(m) < 3 {
+		// Compact form used by Glassdoor: "30d+", "24h", "9d", "3w".
+		re = regexp.MustCompile(`^(\d+)\s*(min|h|d|w|mo|y)\+?$`)
+		m = re.FindStringSubmatch(lower)
+	}
 	if len(m) >= 3 {
 		num, err := strconv.Atoi(m[1])
 		if err == nil && num > 0 {
 			var t time.Time
-			switch m[2] {
-			case "minute":
-				t = now.Add(-time.Duration(num) * time.Minute)
-			case "hour":
+			switch m[2][:1] {
+			case "m":
+				if strings.HasPrefix(m[2], "mo") {
+					t = now.AddDate(0, -num, 0)
+				} else {
+					t = now.Add(-time.Duration(num) * time.Minute)
+				}
+			case "h":
 				t = now.Add(-time.Duration(num) * time.Hour)
-			case "day":
+			case "d":
 				t = now.AddDate(0, 0, -num)
-			case "week":
+			case "w":
 				t = now.AddDate(0, 0, -num*7)
-			case "month":
-				t = now.AddDate(0, -num, 0)
-			case "year":
+			case "y":
 				t = now.AddDate(-num, 0, 0)
 			}
 			return &t

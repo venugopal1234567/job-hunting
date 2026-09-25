@@ -23,7 +23,7 @@ func (r *JobRepo) GetJobs(ctx context.Context, filter repository.JobFilter) ([]m
 	argIdx := 1
 
 	if filter.Days > 0 {
-		where = append(where, fmt.Sprintf("(posted_at >= NOW() - INTERVAL '%d days' OR posted_at IS NULL AND scraped_at >= NOW() - INTERVAL '%d days')", filter.Days, filter.Days))
+		where = append(where, fmt.Sprintf("(posted_at >= NOW() - INTERVAL '%d days' OR (posted_at IS NULL AND scraped_at >= NOW() - INTERVAL '%d days'))", filter.Days, filter.Days))
 	}
 
 	// Match either column: boards like builtin put the work mode ("Remote",

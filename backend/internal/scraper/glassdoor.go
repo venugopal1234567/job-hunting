@@ -66,12 +66,20 @@ func (s *GlassdoorScraper) Scrape(targetURL string) ([]models.Job, error) {
     const descEl = card.querySelector('[data-test="descSnippet"]');
     const description = descEl ? descEl.textContent.trim() : '';
 
+    // Glassdoor lists "Listed X days ago" in a time/span element
+    const dateEl = card.querySelector('time') ||
+                   card.querySelector('[data-test="job-age"]') ||
+                   card.querySelector('.listed') ||
+                   Array.from(card.querySelectorAll('span, time, div')).find(n => /listed|posted|ago|today|yesterday/i.test(n.textContent));
+    const dateStr = dateEl ? (dateEl.dateTime || dateEl.getAttribute('datetime') || dateEl.textContent.trim()) : '';
+
     results.push({
       title: title,
       company: company,
       url: jobURL,
       location: location,
-      description: description
+      description: description,
+      posted_at: dateStr
     });
   });
   return JSON.stringify(results);
@@ -90,6 +98,7 @@ func (s *GlassdoorScraper) Scrape(targetURL string) ([]models.Job, error) {
 			URL         string `json:"url"`
 			Location    string `json:"location"`
 			Description string `json:"description"`
+			PostedAt    string `json:"posted_at"`
 		}
 
 		var rawJobs []rawJob
@@ -121,6 +130,10 @@ func (s *GlassdoorScraper) Scrape(targetURL string) ([]models.Job, error) {
 				Location:    rj.Location,
 				Country:     country,
 				JobType:     "Full Time",
+			}
+
+			if postedAt := parseRelativeDate(rj.PostedAt); postedAt != nil {
+				job.PostedAt = postedAt
 			}
 
 			NormalizeJob(job)
