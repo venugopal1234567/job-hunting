@@ -114,8 +114,20 @@ func (s *GoogleJobsScraper) scrapeWithSerpAPI(targetURL string, apiKey string) (
 		}
 
 		if resp.StatusCode != http.StatusOK {
-			log.Printf("[Scraper] GoogleJobs: SerpAPI returned status %d", resp.StatusCode)
+			log.Printf("[Scraper] GoogleJobs: SerpAPI returned status %d — falling back to chromedp", resp.StatusCode)
 			resp.Body.Close()
+			fallback, ferr := s.scrapeOneURL(u)
+			if ferr != nil {
+				log.Printf("[Scraper] GoogleJobs: chromedp fallback failed: %v", ferr)
+			} else {
+				log.Printf("[Scraper] GoogleJobs: chromedp fallback returned %d jobs", len(fallback))
+				for _, job := range fallback {
+					if !seen[job.JobHash] {
+						seen[job.JobHash] = true
+						allJobs = append(allJobs, job)
+					}
+				}
+			}
 			continue
 		}
 
@@ -144,7 +156,21 @@ func (s *GoogleJobsScraper) scrapeWithSerpAPI(targetURL string, apiKey string) (
 		// "error" field and no jobs_results. Without this check the board looks
 		// healthy while returning nothing.
 		if results.Error != "" {
-			log.Printf("[Scraper] GoogleJobs: SerpAPI error: %s", results.Error)
+			log.Printf("[Scraper] GoogleJobs: SerpAPI error: %s — falling back to chromedp", results.Error)
+			// SerpAPI is unreliable (quota, throttling). Fall back to the
+			// headless-browser path so the board still populates.
+			fallback, ferr := s.scrapeOneURL(u)
+			if ferr != nil {
+				log.Printf("[Scraper] GoogleJobs: chromedp fallback also failed: %v", ferr)
+			} else {
+				log.Printf("[Scraper] GoogleJobs: chromedp fallback returned %d jobs", len(fallback))
+				for _, job := range fallback {
+					if !seen[job.JobHash] {
+						seen[job.JobHash] = true
+						allJobs = append(allJobs, job)
+					}
+				}
+			}
 			continue
 		}
 		log.Printf("[Scraper] GoogleJobs DEBUG: SerpAPI returned %d jobs", len(results.JobsResults))
