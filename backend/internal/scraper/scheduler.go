@@ -17,6 +17,9 @@ import (
 // DELETE per enabled board.
 const purgeInterval = 30 * time.Minute
 
+// googleJobsMaxCallsPerDay caps SerpAPI calls for googlejobs boards.
+const googleJobsMaxCallsPerDay = 5
+
 // Scheduler manages background cron-based scraping
 type Scheduler struct {
 	cron      *cron.Cron
@@ -24,6 +27,12 @@ type Scheduler struct {
 	scrapers  map[string]Scraper
 	purgeMu   sync.Mutex
 	lastPurge time.Time
+
+	// googleJobs rate limiting: max 5 SerpAPI calls per UTC day across both
+	// googlejobs boards (shared SerpAPI quota).
+	gjMu      sync.Mutex
+	gjDate    string // current UTC date "2006-01-02"
+	gjCount   int    // calls made today
 }
 
 // NewScheduler creates a new scheduler with all registered scrapers.
@@ -155,11 +164,27 @@ func (s *Scheduler) RunScraper(boardName, targetURL string) {
 		return
 	}
 
-	// googlejobs previously used SerpAPI exclusively, so runs were throttled
-	// to conserve quota. Now that scrapeWithSerpAPI falls back to chromedp on
-	// quota exhaustion, the throttle is unnecessary — run the scraper on schedule.
+	// Rate-limit googlejobs boards to 5 SerpAPI calls per UTC day across both
+	// googlejobs + googlejobscompanylist (they share the same SerpAPI quota).
+	isGoogleJobs := key == "googlejobs" || key == "googlejobscompanylist"
+	if isGoogleJobs {
+		today := time.Now().UTC().Format("2006-01-02")
+		s.gjMu.Lock()
+		if s.gjDate != today {
+			s.gjDate = today
+			s.gjCount = 0
+		}
+		if s.gjCount >= googleJobsMaxCallsPerDay {
+			s.gjMu.Unlock()
+			log.Printf("[Scheduler] Skipping '%s' — daily SerpAPI cap (%d) reached for today (%s)", boardName, googleJobsMaxCallsPerDay, today)
+			s.updateLastRun(boardName)
+			return
+		}
+		s.gjCount++
+		s.gjMu.Unlock()
+	}
 
-	log.Printf("[Scheduler] Running scraper '%s'", boardName)
+	log.Printf("[Scheduler] Running scraper '%s' (googlejobs daily count: %d)", boardName, s.gjCount)
 	jobs, err := sc.Scrape(targetURL)
 	if err != nil {
 		log.Printf("[Scheduler] Scraper '%s' error: %v", boardName, err)
