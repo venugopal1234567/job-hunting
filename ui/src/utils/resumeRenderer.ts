@@ -143,7 +143,7 @@ export function renderFromStructured(sr: StructuredResume, fitToPage = false): s
       </section>`;
     }
 
-    return bodyHtml;
+    return `<div class="resume-wrapper">${bodyHtml}</div>`;
   } catch (e) {
     console.error('[resumeRenderer] Error rendering structured resume:', e);
     return `<div style="padding: 20px; color: red;">Failed to render resume layout.</div>`;
@@ -161,6 +161,9 @@ export const generatePrintHTMLFromStructured = (sr: StructuredResume, fitToPage 
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${escapeHTML(sr.name || 'Resume')}</title>
     <style>
+        /* box-sizing reset: padding/border must never add to computed width,
+           otherwise a width:100% container silently overflows the print box. */
+        * { box-sizing: border-box; }
         @page {
             size: letter;
             margin: ${fitToPage ? '12px 18px' : '18px 20px'};
@@ -174,6 +177,8 @@ export const generatePrintHTMLFromStructured = (sr: StructuredResume, fitToPage 
             padding: ${fitToPage ? '10px 15px' : '18px 20px'};
             font-size: ${fitToPage ? '13px' : '13.5px'};
             background-color: #fff;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
         }
         
         /* Header Styling */
@@ -251,6 +256,26 @@ export const generatePrintHTMLFromStructured = (sr: StructuredResume, fitToPage 
             display: flex;
             justify-content: space-between;
             align-items: baseline;
+            gap: 8px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        /* Flex items default to min-width:auto and refuse to shrink below their
+           content width, so a long left-hand title pushes the right-hand date past
+           the page margin and gets sliced at the paper edge. min-width:0 lets both
+           sides shrink; overflow-wrap lets the text break instead of overflowing. */
+        .flex-between > * {
+            min-width: 0;
+            overflow-wrap: break-word;
+        }
+        /* The left side absorbs the squeeze first so the date on the right stays
+           intact and on the same line. */
+        .flex-between > *:first-child {
+            flex: 1 1 auto;
+        }
+        .flex-between > *:last-child {
+            flex: 0 0 auto;
+            text-align: right;
         }
 
         /* Work Experience Styling */
@@ -375,18 +400,57 @@ export const formatResumeTextToHTML = (sr: StructuredResume, fitToPage = false):
         size: letter;
         margin: 10mm 12.7mm !important;
     }
-    html, body {
+    /* html and body stay at width:auto so the PDF engine places them naturally
+       inside the @page margins. Forcing width:100% on them can make the engine
+       compute 100% of the full page and shift the column rightward by the margin
+       amount, pushing text off the paper. The width lives on the wrapper
+       instead, which is a plain block that the engine measures against the
+       content box. */
+    html {
+        margin: 0;
+        padding: 0;
+    }
+    body {
         background: #fff !important;
         color: #000 !important;
         font-family: "Times New Roman", Times, serif !important;
         font-size: 10.5px !important;
         line-height: 1.22 !important;
+        width: auto !important;
         padding: 0 !important;
-        margin: 0 auto !important;
-        max-width: 100% !important;
+        margin: 0 !important;
+        overflow-wrap: break-word;
+        word-wrap: break-word;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
     }
+    /* The single width-clamping container. border-box keeps its width equal to
+       its content box; overflow:hidden is the hard backstop so any descendant
+       that still overflows is cut here rather than off the paper. */
+    .resume-wrapper {
+        box-sizing: border-box;
+        width: 100%;
+        max-width: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+    }
+    /* Every text-bearing element wraps before it can reach the paper edge. */
+    body p, body li, body td, body h1, body h2, body .job-title,
+    body .job-date, body .company-name, body .job-location, body .subtitle,
+    body .contact-info, body .tech-used, body .edu-details,
+    body .flex-between > * {
+        overflow-wrap: break-word;
+        word-wrap: break-word;
+        word-break: normal;
+        min-width: 0;
+        max-width: 100%;
+    }
+    /* Fixed table layout so column widths come from the declared percentages,
+       not from the widest cell, which is what pushes the right column past the
+       margin. */
+    .skills-table { table-layout: fixed !important; width: 100% !important; }
+    .skills-table td { overflow-wrap: break-word; word-wrap: break-word; min-width: 0; }
     header { margin-bottom: 4px !important; }
     h1 { font-size: 17px !important; margin: 0 0 1px 0 !important; }
     .subtitle { font-size: 11px !important; margin-bottom: 2px !important; }
