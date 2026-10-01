@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"remotehunter/internal/models"
 	"remotehunter/internal/pdf"
 	"remotehunter/internal/resume"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -281,6 +283,39 @@ func (h *Handler) SaveResumeVersion(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Version saved", "version": version})
+}
+
+// POST /resume/export-pdf
+// Renders the HTML the editor canvas produces into a PDF via headless Chromium.
+// The caller sends the exact HTML it is displaying so the PDF matches the canvas
+// pixel for pixel — the browser print dialog's own header/footer and its
+// degenerate 0x0 print iframe never come into play.
+func (h *Handler) ExportResumePDF(c *gin.Context) {
+	var req struct {
+		HTML string `json:"html"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+	if strings.TrimSpace(req.HTML) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "html is required"})
+		return
+	}
+
+	pdfService, err := pdf.New(os.TempDir())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "PDF service initialization failed: " + err.Error()})
+		return
+	}
+	pdfBytes, err := pdfService.GenerateFromHTML(c.Request.Context(), req.HTML)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate PDF: " + err.Error()})
+		return
+	}
+
+	c.Header("Content-Disposition", `attachment; filename="Resume.pdf"`)
+	c.Data(http.StatusOK, "application/pdf", pdfBytes)
 }
 
 // GET /resume/versions/:id/text

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Loader2, FileText } from 'lucide-react';
 import { Job, StructuredResume } from '../../types';
-import { getResumeContent, getActiveResume, analyzeJob, uploadResume, convertResumeToTemplate } from '../../services/api';
+import { getResumeContent, getActiveResume, analyzeJob, uploadResume, convertResumeToTemplate, exportResumePDF } from '../../services/api';
 import { useResumeEditor } from '../../hooks/useResumeEditor';
 import ChatPanel from './ChatPanel';
 import AppliedDialog from './AppliedDialog';
@@ -49,7 +49,7 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
   const [customJdEnabled, setCustomJdEnabled] = useState(true);
   const [customJdText, setCustomJdText] = useState('');
   const [fitToSinglePage, setFitToSinglePage] = useState(true);
-  const [exportingPDF] = useState(false);
+  const [exportingPDF, setExportingPDF] = useState(false);
   const [isConvertingLayout, setIsConvertingLayout] = useState(false);
   const [uploadPhase, setUploadPhase] = useState<'idle' | 'uploading' | 'analyzing' | 'done'>('idle');
 
@@ -200,31 +200,31 @@ const ResumeEditor: React.FC<ResumeEditorProps> = ({ selectedJob }) => {
     }
   }, [activeModel, fitToSinglePage, applyStructured, saveContent]);
 
-  const handleExportPDF = () => {
-    if (!canvasStructured) return;
-    const fullHTML = formatResumeTextToHTML(canvasStructured, fitToSinglePage);
-
-    const printFrame = document.createElement('iframe');
-    printFrame.style.position = 'fixed';
-    printFrame.style.right = '0';
-    printFrame.style.bottom = '0';
-    printFrame.style.width = '0';
-    printFrame.style.height = '0';
-    printFrame.style.border = '0';
-    document.body.appendChild(printFrame);
-
-    const frameDoc = printFrame.contentWindow?.document;
-    if (frameDoc) {
-      frameDoc.open();
-      frameDoc.write(fullHTML);
-      frameDoc.close();
-      setTimeout(() => {
-        printFrame.contentWindow?.focus();
-        printFrame.contentWindow?.print();
-        setTimeout(() => {
-          document.body.removeChild(printFrame);
-        }, 1000);
-      }, 250);
+  // Renders the exact HTML the canvas displays on the server. Going through
+  // window.print() instead would add Chrome's date/URL print header and lay the
+  // page out in a 0x0 iframe, clipping the right edge.
+  const handleExportPDF = async () => {
+    if (!canvasStructured || exportingPDF) return;
+    setExportingPDF(true);
+    try {
+      const blob = await exportResumePDF(formatResumeTextToHTML(canvasStructured, fitToSinglePage));
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${(canvasStructured.name || 'Resume').replace(/[^\w\s-]/g, '').trim()}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      // Revoked on a later tick: doing it inline can cancel the download
+      // before the browser has read the blob.
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch (err: any) {
+      const detail = err?.response?.data instanceof Blob
+        ? await err.response.data.text()
+        : err?.message || String(err);
+      alert('PDF export failed: ' + detail);
+    } finally {
+      setExportingPDF(false);
     }
   };
 
